@@ -711,7 +711,7 @@ export function generateReleaseQcDocument(release: Release): string {
   const content = `================================================================================
 SLACWAVE MUSIC GROUP - OFFICIAL DISTRIBUTION QC & METADATA CUE SHEET
 Worldwide Digital Music Distribution & Quality Control Administration
-Portal: SlacWave Music Group | Contact: mogaursa4@gmail.com
+Portal: SlacWave Music Group | Contact: djyslactrumpza@gmail.com
 ================================================================================
 
 RELEASE IDENTIFICATION:
@@ -1386,7 +1386,7 @@ apiRouter.post('/video-submissions', authMiddleware, activeClientOnly, (req: Aut
   db.createVideoSubmission(item);
   void Promise.all([
     sendAdminVideoSubmissionEmail({ videoTitle: item.videoTitle, artistName: item.artistName, videoType: item.videoType, clientName: user.name, email: user.email, director: item.director, language: item.language, releaseDate: item.releaseDate, notes: `${item.description || ''}\nYouTube description: ${item.youtubeDescription || ''}\nLyrics: ${item.lyrics || ''}\n${item.notes || ''}\nCover artwork: ${item.artworkUrl}\nVideo master to be sent by client via WhatsApp to 078 629 5032.`, createdAt: now }),
-    sendNotification({ recipientEmail: 'mogaursa4@gmail.com', recipientName: 'SlacWave MG Administration', subject: `New Video Distribution Submission — ${item.videoTitle}`, template: 'submission_received', metadata: { submissionId: item.id, artistName: item.artistName, clientName: user.name, clientEmail: user.email, videoTitle: item.videoTitle, status: item.status } }),
+    sendNotification({ recipientEmail: 'mogaursa4@gmail.com, remoabetswemolefi@gmail.com', recipientName: 'SlacWave MG Administration', subject: `New Video Distribution Submission — ${item.videoTitle}`, template: 'submission_received', metadata: { submissionId: item.id, artistName: item.artistName, clientName: user.name, clientEmail: user.email, videoTitle: item.videoTitle, status: item.status } }),
   ]).catch(err => console.error('[VIDEO] Admin notification failed:', err));
   return res.status(201).json({ message: 'Your video has been submitted for review.', submission: item });
 });

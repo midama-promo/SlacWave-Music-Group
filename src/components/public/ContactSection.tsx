@@ -73,10 +73,10 @@ export const ContactSection: React.FC = () => {
                 <div>
                   <span className="text-xs font-mono text-neutral-400 block">Primary Contact Email</span>
                   <a
-                    href="mailto:mogaursa4@gmail.com"
+                    href="mailto:djyslactrumpza@gmail.com"
                     className="text-sm font-semibold text-white hover:text-emerald-400 transition-colors"
                   >
-                    mogaursa4@gmail.com
+                    djyslactrumpza@gmail.com
                   </a>
                 </div>
               </div>
@@ -126,7 +126,7 @@ export const ContactSection: React.FC = () => {
                   Message Dispatched Successfully
                 </h4>
                 <p className="text-xs text-neutral-300 max-w-md mx-auto">
-                  Thank you. Your inquiry has been forwarded to <strong>mogaursa4@gmail.com</strong> and logged in our system. We will reply shortly.
+                  Thank you. Your inquiry has been forwarded to <strong>djyslactrumpza@gmail.com</strong> and logged in our system. We will reply shortly.
                 </p>
                 <button
                   type="button"

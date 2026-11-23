@@ -17,6 +17,15 @@ export interface AnnouncementEmailResult {
 
 const ANNOUNCEMENT_EMAIL_FROM = process.env.EMAIL_FROM || 'SlacWave Music Group <no-reply@midamapromo.co.za>'; // Same verified sender configuration as OTP
 
+// Render ADMIN_NOTIFICATION_EMAIL accepts a comma-separated list of addresses.
+// Both designated admins receive notifications by default if the variable is unset.
+export const ADMIN_NOTIFICATION_EMAILS = (process.env.ADMIN_NOTIFICATION_EMAIL || 'mogaursa4@gmail.com,remoabetswemolefi@gmail.com')
+  .split(',').map(email => email.trim()).filter(Boolean);
+
+async function sendAdminEmails(subject: string, text: string, html?: string): Promise<void> {
+  await Promise.all(ADMIN_NOTIFICATION_EMAILS.map(email => sendResendEmail(email, subject, text, html)));
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
 }
@@ -37,7 +46,7 @@ export async function sendAnnouncementBatch(
     const greeting = target.name?.trim() ? `Hello ${target.name.trim()},` : 'Hello,';
     const htmlGreeting = greeting;
     const text = `${greeting}\n\n${message}\n\nKind regards,\nSlacWave MG Support\nhttps://midamapromo.co.za/`;
-    const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;color:#171717;line-height:1.65"><div style="background:#111;color:#fff;padding:22px 26px;border-bottom:4px solid #16a34a"><strong style="font-size:20px;letter-spacing:.3px">SLACWAVE MG</strong><div style="font-size:12px;color:#d4d4d4;margin-top:4px">Music Distribution · Client Support</div></div><div style="padding:28px 26px;background:#fff"><p>${escapeHtml(htmlGreeting)}</p><div style="white-space:pre-wrap">${escapeHtml(message)}</div><p style="margin-top:28px">Kind regards,<br><strong>SlacWave MG Support</strong></p></div><div style="padding:16px 26px;background:#f5f5f5;color:#737373;font-size:12px">Need assistance? Contact <a href="mailto:mogaursa4@gmail.com">mogaursa4@gmail.com</a>.<br><a href="https://midamapromo.co.za/">midamapromo.co.za</a></div></div>`;
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;color:#171717;line-height:1.65"><div style="background:#111;color:#fff;padding:22px 26px;border-bottom:4px solid #16a34a"><strong style="font-size:20px;letter-spacing:.3px">SLACWAVE MG</strong><div style="font-size:12px;color:#d4d4d4;margin-top:4px">Music Distribution · Client Support</div></div><div style="padding:28px 26px;background:#fff"><p>${escapeHtml(htmlGreeting)}</p><div style="white-space:pre-wrap">${escapeHtml(message)}</div><p style="margin-top:28px">Kind regards,<br><strong>SlacWave MG Support</strong></p></div><div style="padding:16px 26px;background:#f5f5f5;color:#737373;font-size:12px">Need assistance? Contact <a href="mailto:djyslactrumpza@gmail.com">djyslactrumpza@gmail.com</a>.<br><a href="https://midamapromo.co.za/">midamapromo.co.za</a></div></div>`;
     return { from: ANNOUNCEMENT_EMAIL_FROM, to: [target.email], subject, text, html };
   });
 
@@ -170,19 +179,18 @@ The complete submission remains available in the SlacWave MG Admin Portal for re
 `;
 
   try {
-    await Promise.all(['mogaursa4@gmail.com','remoabetswemolefi@gmail.com'].map(email => sendResendEmail(
-      email,
+    await sendAdminEmails(
       `[${isResubmission ? 'CORRECTION RESUBMISSION' : 'NEW SUBMISSION'}] ${release.title} — ${release.refNumber}`,
       fullEmailBody,
       `<pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${fullEmailBody.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>`
-    )));
+    );
   } catch (error: any) {
     console.error('[EMAIL] New submission email failed:', error?.message || error);
   }
 
   const notif: NotificationLog = {
     id: `notif_admin_${Date.now()}`,
-    recipientEmail: 'mogaursa4@gmail.com, remoabetswemolefi@gmail.com',
+    recipientEmail: ADMIN_NOTIFICATION_EMAILS.join(', '),
     recipientName: 'SlacWave MG Head Office',
     subject: `[${isResubmission ? 'CORRECTION RESUBMISSION' : 'NEW SUBMISSION'}] ${release.title} by ${release.primaryArtists.join(', ')} (${release.refNumber})`,
     template: 'submission_received',
@@ -207,18 +215,18 @@ The complete submission remains available in the SlacWave MG Admin Portal for re
 
 export async function sendAdminEnquiryEmail(enquiry: { name: string; email: string; subject: string; message: string }): Promise<void> {
   const body = `A client submitted a query through the SlacWave MG portal.\n\nFrom: ${enquiry.name}\nEmail: ${enquiry.email}\nSubject: ${enquiry.subject}\n\n${enquiry.message}`;
-  try { await sendResendEmail(process.env.ADMIN_NOTIFICATION_EMAIL || 'mogaursa4@gmail.com', `[CLIENT QUERY] ${enquiry.subject}`, body); }
+  try { await sendAdminEmails(`[CLIENT QUERY] ${enquiry.subject}`, body); }
   catch (error: any) { console.error('[EMAIL] Client query email failed:', error?.message || error); }
 }
 
 export async function sendAdminVevoApplicationEmail(application: { artistName: string; clientName: string; email: string; notes?: string; createdAt: string }): Promise<void> {
   const body = `A client submitted a VEVO channel application through SlacWave MG.\n\nArtist / channel name: ${application.artistName}\nClient: ${application.clientName}\nClient email: ${application.email}\nSubmitted: ${application.createdAt}\n\nAdditional information:\n${application.notes || 'None supplied'}\n\nReview this request in the SlacWave MG admin dashboard.`;
-  await sendResendEmail('mogaursa4@gmail.com', `[VEVO APPLICATION] ${application.artistName}`, body);
+  await sendAdminEmails(`[VEVO APPLICATION] ${application.artistName}`, body);
 }
 
 export async function sendAdminVideoSubmissionEmail(video: { videoTitle: string; artistName: string; videoType: string; clientName: string; email: string; director?: string; language?: string; releaseDate?: string; notes?: string; createdAt: string }): Promise<void> {
   const body = `A client submitted a music video for distribution through SlacWave MG.\n\nVideo: ${video.videoTitle}\nArtist: ${video.artistName}\nType: ${video.videoType}\nClient: ${video.clientName}\nClient email: ${video.email}\nDirector: ${video.director || 'Not supplied'}\nLanguage: ${video.language || 'Not supplied'}\nRelease date: ${video.releaseDate || 'Not supplied'}\nSubmitted: ${video.createdAt}\n\nClient notes:\n${video.notes || 'None supplied'}\n\nReview the submitted artwork and metadata in the Admin Dashboard. The artist will send the video master separately to WhatsApp 078 629 5032.`;
-  await Promise.all(['mogaursa4@gmail.com','remoabetswemolefi@gmail.com'].map(email => sendResendEmail(email, `[VIDEO DISTRIBUTION SUBMISSION] ${video.videoTitle} — ${video.artistName}`, body)));
+  await sendAdminEmails(`[VIDEO DISTRIBUTION SUBMISSION] ${video.videoTitle} — ${video.artistName}`, body);
 }
 
 export async function sendVideoSubmissionStatusEmail(video: { videoTitle: string; artistName: string; clientName: string; email: string; status: string; adminNote?: string }): Promise<void> {
@@ -228,6 +236,6 @@ export async function sendVideoSubmissionStatusEmail(video: { videoTitle: string
 
 export async function sendAdminTakedownEmail(release: Release): Promise<void> {
   const body = `A takedown request was submitted.\n\nReference: ${release.refNumber}\nRelease: ${release.title}\nArtist: ${release.primaryArtists.join(', ')}\nClient: ${release.artistLabelName}\nEmail: ${release.userEmail}\nStatus: ${release.status}\n\nOpen the Admin Portal to process the request.`;
-  try { await sendResendEmail(process.env.ADMIN_NOTIFICATION_EMAIL || 'mogaursa4@gmail.com', `[TAKEDOWN REQUEST] ${release.title} — ${release.refNumber}`, body); }
+  try { await sendAdminEmails(`[TAKEDOWN REQUEST] ${release.title} — ${release.refNumber}`, body); }
   catch (error: any) { console.error('[EMAIL] Takedown email failed:', error?.message || error); }
 }

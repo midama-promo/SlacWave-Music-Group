@@ -254,7 +254,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
           <div className="flex items-center gap-2 sm:gap-3">
 
 
-            <a href="mailto:mogaursa4@gmail.com?subject=SlacWave%20MG%20Query" className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white text-xs font-semibold rounded-xl transition-colors" title="Contact SlacWave MG">
+            <a href="mailto:djyslactrumpza@gmail.com?subject=SlacWave%20MG%20Query" className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white text-xs font-semibold rounded-xl transition-colors" title="Contact SlacWave MG">
               <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
               <span>Make a Query</span>
             </a>

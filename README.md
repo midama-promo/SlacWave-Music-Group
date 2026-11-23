@@ -20,6 +20,8 @@ Create a private bucket named `slacwave-mg-assets` (or change `R2_BUCKET_NAME` t
 ## Admin access
 The only administrator emails are `mogaursa4@gmail.com` and `remoabetswemolefi@gmail.com`. Both are seeded into a fresh database and use email OTP via Resend. Ensure the Resend sender domain is verified and both addresses can receive mail.
 
+Set the Render environment variable `ADMIN_NOTIFICATION_EMAIL` to `mogaursa4@gmail.com,remoabetswemolefi@gmail.com` (comma-separated, no quotes) so both administrators receive submission, enquiry, VEVO, video, and takedown notifications. The public/client support email is `djyslactrumpza@gmail.com`; this does not change either administrator login email.
+
 ## Important launch checks
 - Verify the 300+ music stores / 100+ video stores and free YouTube OAC / Content ID / video-distribution offers against the actual external distribution agreement before publishing those promises.
 - Platform delivery and VEVO / OAC / Content ID acceptance remain subject to third-party eligibility and approval.

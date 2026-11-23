@@ -41,8 +41,8 @@ export const Footer: React.FC<FooterProps> = ({
             </p>
             <div className="flex items-center gap-2 text-neutral-300 pt-2">
               <Mail className="w-3.5 h-3.5 text-emerald-500" />
-              <a href="mailto:mogaursa4@gmail.com" className="hover:text-white transition-colors">
-                mogaursa4@gmail.com
+              <a href="mailto:djyslactrumpza@gmail.com" className="hover:text-white transition-colors">
+                djyslactrumpza@gmail.com
               </a>
             </div>
           </div>
