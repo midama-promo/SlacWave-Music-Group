@@ -40,7 +40,6 @@ import { Release, User, Enquiry, AdminStats, ReleaseStatus, WithdrawalRequest } 
 import { api } from '../../services/api';
 import { Logo } from '../common/Logo';
 import { CatalogueEntryModal } from './CatalogueEntryModal';
-import { SmartPreSaveManager } from './SmartPreSaveManager';
 import { ClientEmailCampaignManager } from './ClientEmailCampaignManager';
 
 interface AdminDashboardProps {
@@ -60,8 +59,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 }) => {
   const { user, logout, accessClientAccount } = useAuth();
   const [accessingClientId, setAccessingClientId] = useState<string | null>(null);
+  const [siteLogoUrl, setSiteLogoUrl] = useState('');
+  const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([]);
+  const [siteSettingsBusy, setSiteSettingsBusy] = useState(false);
+  const [siteLogoUploading, setSiteLogoUploading] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'releases' | 'clients' | 'campaigns' | 'enquiries' | 'catalogue' | 'presave' | 'royalties' | 'settings'>('releases');
+  const [activeTab, setActiveTab] = useState<'releases' | 'clients' | 'campaigns' | 'enquiries' | 'catalogue' | 'royalties' | 'settings'>('releases');
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [releases, setReleases] = useState<Release[]>([]);
   const [videoSubmissions, setVideoSubmissions] = useState<any[]>([]);
@@ -116,6 +120,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [royaltySaving, setRoyaltySaving] = useState(false);
   const [royaltyWithdrawals, setRoyaltyWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [withdrawalProcessingId, setWithdrawalProcessingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const seenKey = `slacwave-admin-tutorial:${user?.email || 'admin'}`;
+    try { if (user?.email && !localStorage.getItem(seenKey)) setTutorialOpen(true); } catch { /* private browsing */ }
+    api.getSiteSettings().then(result => { setSiteLogoUrl(result.settings.logoUrl || ''); setSocialLinks(result.settings.socialLinks || []); }).catch(() => {});
+  }, [user?.email]);
+
+  const saveSiteBranding = async () => {
+    setSiteSettingsBusy(true);
+    try {
+      const result = await api.saveSiteSettings({ logoUrl: siteLogoUrl.trim(), socialLinks: socialLinks.filter(x => x.platform.trim() && x.url.trim()) });
+      setSiteLogoUrl(result.settings.logoUrl || ''); setSocialLinks(result.settings.socialLinks || []);
+      window.dispatchEvent(new CustomEvent('slacwave:site-settings-updated', { detail: result.settings }));
+      alert('Website logo and social links saved. They will appear across the public website.');
+    } catch (err: any) { alert(err.message || 'Could not save website settings.'); }
+    finally { setSiteSettingsBusy(false); }
+  };
+
+  const closeTutorial = () => {
+    try { localStorage.setItem(`slacwave-admin-tutorial:${user?.email || 'admin'}`, 'done'); } catch { /* private browsing */ }
+    setTutorialOpen(false);
+  };
 
   const handleReleaseStatusUpdated = (updated: Release) => {
     setReleases(prev => prev.map(r => r.id === updated.id ? updated : r));
@@ -513,6 +539,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="w-52 lg:w-64 bg-neutral-900 border border-neutral-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:border-emerald-600"
               />
             </div>
+            <button type="button" onClick={() => setTutorialOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white text-xs font-semibold rounded-xl" title="Open admin portal tutorial">Get Started</button>
+
             <button
               onClick={onGoHome}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer"
@@ -659,16 +687,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button
-            onClick={() => setActiveTab('presave')}
-            className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'presave' ? 'border-emerald-600 text-white font-bold' : 'border-transparent text-neutral-400 hover:text-white'
-            }`}
-          >
-            <Link2 className="w-4 h-4 text-emerald-500" />
-            <span>Smart Pre-Saves</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab('royalties')}
             className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === 'royalties' ? 'border-emerald-600 text-white font-bold' : 'border-transparent text-neutral-400 hover:text-white'
@@ -727,7 +745,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {/* TAB: ROYALTIES & WITHDRAWALS */}
-        {activeTab === 'presave' && <SmartPreSaveManager />}
 
         {activeTab === 'royalties' && (
           <div className="space-y-6">
@@ -771,6 +788,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* TAB: DATA BACKUP */}
         {activeTab === 'settings' && (
           <div className="max-w-3xl space-y-6">
+            <section className="p-6 bg-neutral-900/60 border border-neutral-800 rounded-2xl space-y-4">
+              <div><h3 className="text-base font-bold text-white">Website Branding & Social Links</h3><p className="text-xs text-neutral-400 mt-1">Change the logo used across the website and manage the social buttons shown at the bottom of public pages.</p></div>
+              <label className="block text-xs text-neutral-300">Upload a new logo (JPG or PNG)<input type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" disabled={siteLogoUploading} onChange={async e => { const file = e.target.files?.[0]; if (!file) return; setSiteLogoUploading(true); try { const result = await api.uploadSiteLogo(file); setSiteLogoUrl(result.logoUrl); window.dispatchEvent(new CustomEvent('slacwave:site-settings-updated', { detail: { logoUrl: result.logoUrl, socialLinks } })); alert(result.message); } catch (err: any) { alert(err.message || 'Logo upload failed.'); } finally { setSiteLogoUploading(false); e.currentTarget.value = ''; } }} className="mt-1 block w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-xs text-white file:mr-3 file:rounded-lg file:border-0 file:bg-neutral-800 file:px-3 file:py-2 file:text-white" />{siteLogoUploading && <span className="mt-1 block text-[10px] text-emerald-300">Uploading logo…</span>}</label>
+              <label className="block text-xs text-neutral-300">Or use a publicly accessible logo URL (HTTPS)<input value={siteLogoUrl} onChange={e => setSiteLogoUrl(e.target.value)} placeholder="https://.../slacwave-logo.png" className="mt-1 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-white" /></label>
+              <div className="space-y-2"><div className="flex items-center justify-between"><h4 className="text-sm font-bold text-white">Social media buttons</h4><button type="button" onClick={() => setSocialLinks(v => [...v, { platform: '', url: '' }])} className="rounded-lg bg-neutral-800 px-3 py-2 text-xs text-white">Add link</button></div>
+                {socialLinks.map((link, index) => <div key={index} className="grid grid-cols-1 sm:grid-cols-[.7fr_1.3fr_auto] gap-2"><input value={link.platform} onChange={e => setSocialLinks(v => v.map((x,i) => i === index ? { ...x, platform: e.target.value } : x))} placeholder="Instagram / TikTok / YouTube" className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white"/><input value={link.url} onChange={e => setSocialLinks(v => v.map((x,i) => i === index ? { ...x, url: e.target.value } : x))} placeholder="https://..." className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white"/><button type="button" onClick={() => setSocialLinks(v => v.filter((_,i) => i !== index))} className="rounded-lg border border-neutral-700 px-3 py-2 text-xs text-neutral-300">Remove</button></div>)}
+                {!socialLinks.length && <p className="text-xs text-neutral-500">No social links configured yet.</p>}
+              </div>
+              <button type="button" onClick={() => void saveSiteBranding()} disabled={siteSettingsBusy} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{siteSettingsBusy ? 'Saving…' : 'Save website branding'}</button>
+            </section>
             <div><h3 className="text-base font-bold text-white font-['Space_Grotesk']">Data Backup</h3><p className="text-xs text-neutral-400">Recommended before publishing code changes. This is your emergency copy if a deployment damages catalogue data or uploaded files.</p></div>
             <div className="p-6 bg-neutral-900/60 border border-emerald-900/50 rounded-2xl space-y-4">
               <div className="flex gap-3"><Shield className="w-5 h-5 text-emerald-400 shrink-0" /><div><h4 className="text-sm font-bold text-white">Safe backup and restore</h4><p className="text-xs text-neutral-400 mt-1">Exports the database records plus uploaded artwork, masters and documents. Import is additive: existing IDs and files are never overwritten or deleted.</p></div></div>
@@ -902,7 +929,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <td className="py-3.5 px-4">
                             <span className="text-neutral-300 block">{rel.genre}</span>
                             <span className="text-[10px] text-neutral-500 font-mono block">
-                              {rel.releaseType} · {rel.tracks.length} lossless track(s)
+                              {rel.releaseType} · {rel.tracks.length} MP3 reference track(s){rel.audioMasterPending ? ' · MP3 master conversion pending from support' : ''}
                             </span>
                           </td>
 
@@ -940,7 +967,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 )}
                               </button>
 
-                              {(rel.status === 'Approved' || rel.status === 'Completed') && (
+                              {(rel.status === 'Approved' || rel.status === 'Delivered') && (
                                 <button
                                   type="button"
                                   onClick={() => openPreSaveManager(rel)}
@@ -1199,6 +1226,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
       </main>
+
+      {tutorialOpen && <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"><div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-700 bg-neutral-950 p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-emerald-400">SlacWave MG administrator guide</p><h2 className="mt-1 text-xl font-bold text-white">Get started with your admin portal</h2><p className="mt-2 text-xs text-neutral-400">A quick guide to the tools available to both administrators.</p></div><button onClick={closeTutorial} className="rounded-lg border border-neutral-700 px-3 py-2 text-xs text-white">Close</button></div><div className="mt-5 grid gap-3 sm:grid-cols-2">{[{t:'Releases Management',d:'Review audio releases, inspect metadata and artwork, approve, deny, request corrections, update delivery status, download submitted assets and manage eligible pre-save links.'},{t:'Clients & Artists',d:'View client accounts, search artists, register clients, edit account details, disable access and open a client dashboard when support is needed.'},{t:'Email Campaigns',d:'Select registered client recipients, compose a subject and message, preview the email, send a test and send campaigns. Campaign history records delivery results.'},{t:'Enquiries',d:'Review and respond to messages submitted through the public contact form.'},{t:'Catalogue',d:'Create legacy catalogue records and attach previously released portal submissions to client catalogues.'},{t:'Royalties & Withdrawals',d:'Record release and catalogue royalties, review withdrawal requests, confirm payment was sent and mark requests paid only after client confirmation.'},{t:'Settings',d:'Change the website logo, configure public social-media buttons, and export or restore application data backups.'},{t:'Video Submissions',d:'Review video metadata and artwork, manage submission status and royalty amounts. Video masters are sent separately to support.'}].map(item=><div key={item.t} className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4"><h3 className="text-sm font-bold text-white">{item.t}</h3><p className="mt-2 text-xs leading-5 text-neutral-400">{item.d}</p></div>)}</div><div className="mt-5 flex justify-end"><button onClick={closeTutorial} className="rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white">Finish tutorial</button></div></div></div>}
 
       {/* MODAL: PRE-SAVE LINK MANAGER */}
       {preSaveRelease && (

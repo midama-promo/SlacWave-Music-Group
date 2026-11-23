@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Logo } from '../common/Logo';
 import { Mail, Shield, Lock, ArrowUp } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -15,6 +15,8 @@ export const Footer: React.FC<FooterProps> = ({
   onGoToDashboard,
 }) => {
   const { user } = useAuth();
+  const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([]);
+  useEffect(() => { let alive = true; const load = () => fetch('/api/site-settings', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(data => { if (alive) setSocialLinks(data?.settings?.socialLinks || []); }).catch(() => {}); const update = (event: Event) => setSocialLinks((event as CustomEvent).detail?.socialLinks || []); void load(); window.addEventListener('slacwave:site-settings-updated', update); return () => { alive = false; window.removeEventListener('slacwave:site-settings-updated', update); }; }, []);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -148,6 +150,7 @@ export const Footer: React.FC<FooterProps> = ({
           </div>
         </div>
 
+        {socialLinks.length > 0 && <div className="flex flex-wrap justify-center gap-3 border-t border-neutral-900 pt-6">{socialLinks.map((link, index) => <a key={`${link.platform}-${index}`} href={link.url} target="_blank" rel="noreferrer" className="rounded-full border border-neutral-800 bg-neutral-900 px-4 py-2 text-xs font-semibold text-neutral-300 transition hover:border-emerald-700 hover:text-white">{link.platform}</a>)}</div>}
       </div>
     </footer>
   );

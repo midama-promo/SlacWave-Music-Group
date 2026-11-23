@@ -52,6 +52,7 @@ export interface ArtistCredit {
   appleMusicProfileUrl?: string;
   spotifyProfileCreateRequested?: boolean;
   appleMusicProfileCreateRequested?: boolean;
+  socialMediaLinks?: string[];
 }
 
 export interface TrackItem {
@@ -138,6 +139,7 @@ export interface Release {
   storedArtworkFilename?: string;
   artworkDimensions?: { width: number; height: number };
   tracks: TrackItem[];
+  audioMasterPending?: boolean;
   documents?: ReleaseDocumentItem[];
   clientNotes?: string;
   adminNotes?: string;
@@ -304,6 +306,7 @@ export interface DatabaseSchema {
   emailCampaigns: EmailCampaign[];
   vevoApplications: VevoApplication[];
   videoSubmissions: VideoSubmission[];
+  siteSettings?: { logoUrl?: string; socialLinks?: Array<{ platform: string; url: string }> };
 }
 
 // ----------------------------------------------------
@@ -422,6 +425,7 @@ const INITIAL_DB: DatabaseSchema = {
   emailCampaigns: [],
   vevoApplications: [],
   videoSubmissions: [],
+  siteSettings: { logoUrl: '', socialLinks: [] },
 };
 
 // ----------------------------------------------------
@@ -538,6 +542,7 @@ class Database {
     const emailCampaigns: EmailCampaign[] = Array.isArray(parsed.emailCampaigns) ? parsed.emailCampaigns : [];
     const vevoApplications: VevoApplication[] = Array.isArray(parsed.vevoApplications) ? parsed.vevoApplications : [];
     const videoSubmissions: VideoSubmission[] = Array.isArray(parsed.videoSubmissions) ? parsed.videoSubmissions : [];
+    const siteSettings = parsed.siteSettings && typeof parsed.siteSettings === 'object' ? parsed.siteSettings : { logoUrl: '', socialLinks: [] };
 
     // Ensure designated platform administrator accounts exist idempotently
     // 1. Remoabetswe Molefi (Founder / Distribution Manager)
@@ -601,6 +606,7 @@ class Database {
       emailCampaigns,
       vevoApplications,
       videoSubmissions,
+      siteSettings: { logoUrl: String(siteSettings.logoUrl || ''), socialLinks: Array.isArray(siteSettings.socialLinks) ? siteSettings.socialLinks : [] },
     };
   }
 

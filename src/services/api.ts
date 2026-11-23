@@ -75,6 +75,17 @@ class ApiService {
     return data as T;
   }
 
+  async getSiteSettings(): Promise<{ settings: { logoUrl?: string; socialLinks?: Array<{ platform: string; url: string }> } }> {
+    return this.request('/api/site-settings');
+  }
+  async saveSiteSettings(settings: { logoUrl: string; socialLinks: Array<{ platform: string; url: string }> }): Promise<{ message: string; settings: any }> {
+    return this.request('/api/admin/site-settings', { method: 'PUT', body: JSON.stringify(settings) });
+  }
+  async uploadSiteLogo(file: File): Promise<{ message: string; logoUrl: string }> {
+    const formData = new FormData(); formData.append('artwork', file);
+    return this.request('/api/admin/site-settings/logo', { method: 'POST', body: formData });
+  }
+
   // Auth
   async getAuthConfig(): Promise<{ provider: string; otpLength: number }> {
     return this.request<{ provider: string; otpLength: number }>('/api/auth/config');
@@ -239,14 +250,6 @@ class ApiService {
   async submitVideoSubmission(payload: any): Promise<{ message: string; submission: any }> { return this.request('/api/video-submissions', { method: 'POST', body: JSON.stringify(payload) }); }
   async getVideoSubmissions(): Promise<{ submissions: any[] }> { return this.request('/api/video-submissions'); }
   async updateVideoSubmission(id: string, payload: { status?: 'Pending Review'|'Approved'|'Corrections Required'|'Denied'|'Rejected'|'Delivered'; adminNote?: string; grossRoyaltyAmount?: number }): Promise<{ message: string; submission: any }> { return this.request(`/api/admin/video-submissions/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
-
-  async previewSmartPreSave(soundblastUrl: string): Promise<{ metadata: { title: string; artist: string; artworkUrl: string; dspLinks: Array<{label:string;url:string}> } }> {
-    return this.request('/api/admin/presave/preview', { method: 'POST', body: JSON.stringify({ soundblastUrl }) });
-  }
-  async getSmartPreSaves(): Promise<{ pages: any[] }> { return this.request('/api/admin/presave'); }
-  async createSmartPreSave(payload: any): Promise<{ page: any; message: string }> { return this.request('/api/admin/presave', { method: 'POST', body: JSON.stringify(payload) }); }
-  async updateSmartPreSave(id: string, payload: any): Promise<{ page: any }> { return this.request(`/api/admin/presave/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
-  async deleteSmartPreSave(id: string): Promise<{ message: string }> { return this.request(`/api/admin/presave/${id}`, { method: 'DELETE' }); }
 
   async updatePreSaveLinks(id: string, links: Array<{ id?: string; label: string; url: string }>): Promise<{ message: string; release: Release }> {
     return this.request<{ message: string; release: Release }>(`/api/releases/${id}/presave-links`, {

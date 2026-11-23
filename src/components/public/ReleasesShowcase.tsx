@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import studioImage from '../../assets/images/midama_hero_studio_1790261726731.jpg';
-import { ArrowUpRight, Disc3, Headphones, Music2, Radio, Globe2 } from 'lucide-react';
+import { Disc3 } from 'lucide-react';
 
 const platforms = [
   'Spotify', 'Apple Music', 'YouTube Music', 'Audiomack', 'Deezer',
@@ -56,40 +56,6 @@ export const ReleasesShowcase: React.FC = () => {
         <div className="dsp-marquee mt-12 space-y-3" aria-label="Digital music platforms">
           {lane(false)}
           {lane(true)}
-        </div>
-
-        <div className="mt-14 grid gap-8 lg:grid-cols-[.85fr_1.15fr] lg:items-center">
-          <div data-reveal="left" className="space-y-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-neutral-700 bg-neutral-900 text-emerald-400">
-              <Headphones size={23} />
-            </div>
-            <h3 className="font-['Space_Grotesk'] text-2xl font-bold text-white sm:text-3xl">Press play. Find your next favourite.</h3>
-            <p className="max-w-lg leading-7 text-neutral-400">
-              Browse the official SlacWave MG playlist on Spotify. New releases and client music can be discovered in one place.
-            </p>
-            <a
-              href="https://open.spotify.com/playlist/4KYvlqYhvtLviT6pQZcKjj?si=Yu732LP1RLu0gfheVVB5IA"
-              target="_blank" rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-950/30 transition duration-300 hover:-translate-y-1 hover:bg-emerald-500"
-            >
-              Open Spotify playlist <ArrowUpRight size={17} />
-            </a>
-            <div className="flex flex-wrap gap-5 pt-2 text-xs text-neutral-500">
-              <span className="inline-flex items-center gap-2"><Music2 size={14} /> Independent artists</span>
-              <span className="inline-flex items-center gap-2"><Globe2 size={14} /> Worldwide discovery</span>
-              <span className="inline-flex items-center gap-2"><Radio size={14} /> Streaming platforms</span>
-            </div>
-          </div>
-          <div data-reveal="right" className="spotify-frame-wrap">
-            <div className="spotify-frame-top"><span /><span /><span /><p>SLACWAVE MG / SPOTIFY</p></div>
-            <iframe
-              title="SlacWave MG releases on Spotify"
-              src="https://open.spotify.com/embed/playlist/4KYvlqYhvtLviT6pQZcKjj?utm_source=generator&theme=0"
-              width="100%" height="420" style={{ border: 0, borderRadius: 12 }}
-              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-              loading="lazy"
-            />
-          </div>
         </div>
 
         <div className="ma-artist-manifesto mt-20 grid overflow-hidden rounded-3xl border border-white/10 lg:grid-cols-[1.05fr_.95fr]" data-reveal="up">

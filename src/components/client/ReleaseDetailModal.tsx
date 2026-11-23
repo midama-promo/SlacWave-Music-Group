@@ -355,8 +355,8 @@ export const ReleaseDetailModal: React.FC<ReleaseDetailModalProps> = ({
                 </p>
 
                 {/* Artist DSP Profile Links */}
-                {((release.primaryArtistProfiles && release.primaryArtistProfiles.some((p) => p.spotifyProfileUrl || p.appleMusicProfileUrl)) ||
-                  (release.featuredArtistProfiles && release.featuredArtistProfiles.some((p) => p.spotifyProfileUrl || p.appleMusicProfileUrl))) && (
+                {((release.primaryArtistProfiles && release.primaryArtistProfiles.some((p) => p.spotifyProfileUrl || p.appleMusicProfileUrl || p.spotifyProfileCreateRequested || p.appleMusicProfileCreateRequested)) ||
+                  (release.featuredArtistProfiles && release.featuredArtistProfiles.some((p) => p.spotifyProfileUrl || p.appleMusicProfileUrl || p.spotifyProfileCreateRequested || p.appleMusicProfileCreateRequested))) && (
                   <div className="flex flex-wrap gap-2 pt-2">
                     {release.primaryArtistProfiles?.map((p, idx) => (
                       <div key={idx} className="flex items-center gap-1.5 text-[11px] bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded">
@@ -384,6 +384,8 @@ export const ReleaseDetailModal: React.FC<ReleaseDetailModalProps> = ({
                             <ExternalLink className="w-2.5 h-2.5" />
                           </a>
                         )}
+                        {(p.spotifyProfileCreateRequested || p.appleMusicProfileCreateRequested) && <span className="text-amber-300">New profiles requested</span>}
+                        {p.socialMediaLinks?.map((url, socialIndex) => <a key={socialIndex} href={url} target="_blank" rel="noopener noreferrer" className="text-neutral-400 hover:text-white">Social {socialIndex + 1}</a>)}
                       </div>
                     ))}
                     {release.featuredArtistProfiles?.map((p, idx) => (
@@ -412,6 +414,8 @@ export const ReleaseDetailModal: React.FC<ReleaseDetailModalProps> = ({
                             <ExternalLink className="w-2.5 h-2.5" />
                           </a>
                         )}
+                        {(p.spotifyProfileCreateRequested || p.appleMusicProfileCreateRequested) && <span className="text-amber-300">New profiles requested</span>}
+                        {p.socialMediaLinks?.map((url, socialIndex) => <a key={socialIndex} href={url} target="_blank" rel="noopener noreferrer" className="text-neutral-400 hover:text-white">Social {socialIndex + 1}</a>)}
                       </div>
                     ))}
                   </div>

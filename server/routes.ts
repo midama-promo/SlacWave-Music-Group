@@ -26,7 +26,6 @@ import type {
   ReleaseDocumentItem,
   CatalogueEntry,
   WithdrawalRequest,
-  SmartPreSavePage,
   VevoApplication,
   VideoSubmission,
 } from './db.ts';
@@ -151,9 +150,9 @@ const uploadAudio = multer({
   limits: { fileSize: 500 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const name = file.originalname.toLowerCase();
-    const accepted = name.endsWith('.wav') || name.endsWith('.flac') || ['audio/wav','audio/x-wav','audio/flac','audio/x-flac'].includes(file.mimetype.toLowerCase());
+    const accepted = name.endsWith('.mp3') || ['audio/mpeg','audio/mp3'].includes(file.mimetype.toLowerCase());
     if (accepted) cb(null, true);
-    else cb(new Error('Audio masters must be WAV or FLAC files.'));
+    else cb(new Error('Only optional MP3 reference files are accepted in the portal. Send your MP3 master to SlacWave MG support via WhatsApp.'));
   }
 });
 
@@ -402,6 +401,35 @@ apiRouter.post('/payments/paystack/webhook', (req: Request, res: Response) => {
 // AUTH ROUTES
 // ----------------------------------------------------
 
+apiRouter.get('/site-settings', (_req: Request, res: Response) => {
+  const settings = (db.getAuthoritativeData() as any).siteSettings || { logoUrl: '', socialLinks: [] };
+  res.json({ settings });
+});
+
+apiRouter.put('/admin/site-settings', authMiddleware, adminOnly, (req: AuthenticatedRequest, res: Response) => {
+  const logoUrl = String(req.body?.logoUrl || '').trim();
+  if (logoUrl && ((!/^https:\/\//i.test(logoUrl) && !/^\/api\/assets\/[A-Za-z0-9_-]+$/.test(logoUrl)) || logoUrl.length > 2000)) return res.status(400).json({ error: 'Logo must be a valid HTTPS image URL or an uploaded SlacWave logo asset.' });
+  const incoming = Array.isArray(req.body?.socialLinks) ? req.body.socialLinks : [];
+  if (incoming.length > 12) return res.status(400).json({ error: 'A maximum of 12 social links is allowed.' });
+  const socialLinks = incoming.map((item: any) => ({ platform: String(item?.platform || '').trim().slice(0,40), url: String(item?.url || '').trim().slice(0,2000) })).filter((item: any) => item.platform && /^https:\/\//i.test(item.url));
+  db.mutate((data: any) => { data.siteSettings = { logoUrl, socialLinks }; });
+  res.json({ message: 'Website branding settings saved.', settings: { logoUrl, socialLinks } });
+});
+
+apiRouter.post('/admin/site-settings/logo', authMiddleware, adminOnly, uploadArtwork.single('artwork'), (req: AuthenticatedRequest, res: Response) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose a JPG or PNG logo image.' });
+  if (!remoteStorageConfigured) {
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
+    return res.status(503).json({ error: 'Cloudflare R2 must be configured before uploading a public website logo.' });
+  }
+  const objectPath = `site-branding/${req.file.filename}`;
+  remoteUploadFile(req.file.path, objectPath, req.file.mimetype || 'image/png');
+  try { fs.unlinkSync(req.file.path); } catch (_) {}
+  const logoUrl = `/api/assets/${encodeRemoteAssetPath(objectPath)}`;
+  db.mutate((data: any) => { data.siteSettings = { ...(data.siteSettings || { socialLinks: [] }), logoUrl }; });
+  res.json({ message: 'Website logo uploaded and saved.', logoUrl });
+});
+
 apiRouter.get('/auth/config', (_req: Request, res: Response) => res.json({ provider: 'resend', otpLength: 6 }));
 
 apiRouter.post('/auth/request-otp', async (req: Request, res: Response) => {
@@ -586,14 +614,14 @@ apiRouter.post('/upload/audio', authMiddleware, activeClientOnly, (req: Authenti
   }
 
   const audioName = req.file.originalname.toLowerCase();
-  if (!audioName.endsWith('.wav') && !audioName.endsWith('.flac')) { try { fs.unlinkSync(req.file.path); } catch (_) {} return res.status(400).json({ error: 'Audio master must be WAV or FLAC.' }); }
+  if (!audioName.endsWith('.mp3')) { try { fs.unlinkSync(req.file.path); } catch (_) {} return res.status(400).json({ error: 'Only MP3 files can be uploaded through the portal.' }); }
 
   let storedFilename = req.file.filename;
   let fileUrl = `/uploads/audio/${req.file.filename}`;
-  if (remoteStorageConfigured) { const objectPath = `${req.user!.id}/audio/${req.file.filename}`; remoteUploadFile(req.file.path, objectPath, audioName.endsWith('.flac') ? 'audio/flac' : 'audio/wav'); try { fs.unlinkSync(req.file.path); } catch (_) {} storedFilename = `r2:${objectPath}`; fileUrl = `/api/assets/${encodeRemoteAssetPath(objectPath)}`; }
+  if (remoteStorageConfigured) { const objectPath = `${req.user!.id}/audio/${req.file.filename}`; remoteUploadFile(req.file.path, objectPath, 'audio/mpeg'); try { fs.unlinkSync(req.file.path); } catch (_) {} storedFilename = `r2:${objectPath}`; fileUrl = `/api/assets/${encodeRemoteAssetPath(objectPath)}`; }
   res.json({
     success: true,
-    message: 'WAV/FLAC audio master uploaded successfully',
+    message: 'Optional MP3 reference file uploaded successfully',
     filename: req.file.originalname,
     storedFilename,
     fileUrl,
@@ -1016,7 +1044,8 @@ apiRouter.get('/assets/:encoded', (req: Request, res: Response) => {
       ? [{ storedName, allowed: v.userId === user?.id || user?.role === 'admin' }]
       : [];
   })[0];
-  const matched = releaseMatch || catalogueMatch || videoMatch;
+  const brandingMatch = objectPath.startsWith('site-branding/') ? { storedName: `r2:${objectPath}`, allowed: true } : null;
+  const matched = brandingMatch || releaseMatch || catalogueMatch || videoMatch;
   if (!matched || (!matched.allowed && (!user || user.role !== 'admin'))) return res.status(403).json({ error: 'Access denied.' });
 
   try { return res.redirect(remoteSignedUrlForStoredName(matched.storedName, 300)); }
@@ -1147,23 +1176,34 @@ apiRouter.post('/releases', authMiddleware, activeClientOnly, async (req: Authen
   const body = req.body || {};
   const releaseType = ['Single','EP','Album'].includes(body.releaseType) ? body.releaseType : null;
   const title = String(body.title || '').trim().slice(0,180);
-  const primaryArtists = Array.isArray(body.primaryArtists) ? body.primaryArtists.map((x: any) => String(x).trim()).filter(Boolean).slice(0,20) : [];
+  const primaryArtists = Array.isArray(body.primaryArtists) ? body.primaryArtists.map((x: any) => String(x).trim()).filter(Boolean) : [];
   const genre = String(body.genre || '').trim().slice(0,100);
+  const credits = [...(Array.isArray(body.composers) ? body.composers : []), ...(Array.isArray(body.producers) ? body.producers : []), ...(Array.isArray(body.publishers) ? body.publishers : [])].map((x: any) => String(x || '').trim()).filter(Boolean);
+  if (credits.some((name: string) => name.split(/\s+/).length < 2)) return res.status(400).json({ error: 'Composer and producer credits must be entered using real first name and surname.' });
   const artworkUrl = String(body.artworkUrl || '').trim();
   const artworkStoredFilename = String(body.storedArtworkFilename || '').trim();
   if (!isOwnedUploadedAsset(user.id, 'artwork', artworkStoredFilename, artworkUrl)) return res.status(400).json({ error: 'Upload the release cover artwork through this SlacWave MG portal before submitting.' });
   const tracksIn = Array.isArray(body.tracks) ? body.tracks : [];
-  if (!releaseType || !title || !primaryArtists.length || !genre || !artworkUrl || !tracksIn.length) return res.status(400).json({ error: 'Release type, title, primary artist, genre, cover artwork and at least one audio track are required.' });
-  if (releaseType === 'Single' && tracksIn.length !== 1) return res.status(400).json({ error: 'A Single must contain exactly one track. Choose EP or Album for multiple tracks.' });
+  const audioMasterPending = body.audioMasterPending === true;
+  if (!releaseType || !title || !primaryArtists.length || !genre || !artworkUrl || (!tracksIn.length && !audioMasterPending)) return res.status(400).json({ error: 'Release type, title, primary artist, genre, cover artwork and confirmation that the MP3 master will be sent to support are required.' });
+  if (releaseType === 'Single' && tracksIn.length > 1) return res.status(400).json({ error: 'A Single can contain only one optional MP3 reference file. Choose EP or Album for multiple tracks.' });
   const releaseDate = String(body.targetReleaseDate || '').trim();
   const releaseDateMs = new Date(`${releaseDate}T00:00:00`).getTime();
   const minimumReleaseDate = new Date(); minimumReleaseDate.setHours(0,0,0,0); minimumReleaseDate.setDate(minimumReleaseDate.getDate() + 14);
   if (!releaseDate || !Number.isFinite(releaseDateMs) || releaseDateMs < minimumReleaseDate.getTime()) return res.status(400).json({ error: 'Choose a release date at least 14 days ahead to allow review and delivery.' });
-  const invalidTrack = tracksIn.find((t: any) => !String(t.filename || '').trim() || !/\.(wav|flac)$/i.test(String(t.filename || '')) || !isOwnedUploadedAsset(user.id, 'audio', String(t.storedFilename || ''), String(t.fileUrl || '')));
-  if (invalidTrack) return res.status(400).json({ error: 'Every track must be an uploaded WAV or FLAC master.' });
+  const profileRows = [...(Array.isArray(body.primaryArtistProfiles) ? body.primaryArtistProfiles : []), ...(Array.isArray(body.featuredArtistProfiles) ? body.featuredArtistProfiles : [])];
+  for (const profile of profileRows) {
+    const name = String(profile?.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Every artist profile entry requires an artist name.' });
+    const requestingNew = !!(profile?.spotifyProfileCreateRequested || profile?.appleMusicProfileCreateRequested);
+    if (requestingNew && !(Array.isArray(profile?.socialMediaLinks) && profile.socialMediaLinks.some((x: any) => /^https:\/\//i.test(String(x))))) return res.status(400).json({ error: `At least one valid social-media link is required to request new profiles for ${name}.` });
+    if (!requestingNew && (!/^https:\/\//i.test(String(profile?.spotifyProfileUrl || '')) || !/^https:\/\//i.test(String(profile?.appleMusicProfileUrl || '')))) return res.status(400).json({ error: `Provide Spotify and Apple Music profile URLs for ${name}, or request new profiles.` });
+  }
+  const invalidTrack = tracksIn.find((t: any) => !String(t.filename || '').trim() || !/\.mp3$/i.test(String(t.filename || '')) || !isOwnedUploadedAsset(user.id, 'audio', String(t.storedFilename || ''), String(t.fileUrl || '')));
+  if (invalidTrack) return res.status(400).json({ error: 'Optional reference uploads must be MP3 files uploaded through this portal.' });
   const tracks = tracksIn.map((t: any, i: number) => {
     const filename = String(t.filename || '').trim(); const fileUrl = String(t.fileUrl || '').trim(); const storedFilename = String(t.storedFilename || '').trim();
-    return { id: `trk_${crypto.randomUUID()}`, trackNumber: i + 1, title: String(t.title || filename.replace(/\.(wav|flac)$/i,'')).trim().slice(0,180), version: String(t.version || body.version || '1.0').trim().slice(0,40), filename, storedFilename, fileUrl, fileSize: Number(t.fileSize) || 0, explicit: !!body.explicit };
+    return { id: `trk_${crypto.randomUUID()}`, trackNumber: i + 1, title: String(t.title || filename.replace(/\.mp3$/i,'')).trim().slice(0,180), version: String(t.version || body.version || '1.0').trim().slice(0,40), filename, storedFilename, fileUrl, fileSize: Number(t.fileSize) || 0, explicit: !!body.explicit };
   });
   const now = new Date().toISOString();
   const release: Release = {
@@ -1177,7 +1217,7 @@ apiRouter.post('/releases', authMiddleware, activeClientOnly, async (req: Authen
     cLine: String(body.cLine || '').trim().slice(0,180) || undefined, pLine: String(body.pLine || '').trim().slice(0,180) || undefined,
     artworkUrl, artworkFilename: String(body.artworkFilename || 'cover-art.jpg'), storedArtworkFilename: artworkStoredFilename,
     artworkDimensions: body.artworkDimensions && Number.isFinite(Number(body.artworkDimensions.width)) ? { width: Number(body.artworkDimensions.width), height: Number(body.artworkDimensions.height) } : undefined,
-    tracks, clientNotes: String(body.clientNotes || '').trim().slice(0,3000) || undefined, status: 'Pending Review', allowPublicShare: false, submittedAt: now, updatedAt: now,
+    tracks, audioMasterPending, primaryArtistProfiles: Array.isArray(body.primaryArtistProfiles) ? body.primaryArtistProfiles : [], featuredArtistProfiles: Array.isArray(body.featuredArtistProfiles) ? body.featuredArtistProfiles : [], artistProfiles: [...(Array.isArray(body.primaryArtistProfiles) ? body.primaryArtistProfiles : []), ...(Array.isArray(body.featuredArtistProfiles) ? body.featuredArtistProfiles : [])], clientNotes: String(body.clientNotes || '').trim().slice(0,3000) || undefined, status: 'Pending Review', allowPublicShare: false, submittedAt: now, updatedAt: now,
     statusHistory: [{ status: 'Pending Review', note: 'New SlacWave MG audio release submitted.', timestamp: now, updatedBy: user.name }], grossRoyaltyAmount: 0, royaltyAmount: 0, labelShareAmount: 0,
   };
   db.createRelease(release);
@@ -1270,8 +1310,8 @@ apiRouter.patch('/releases/:id/presave-links', authMiddleware, adminOnly, (req: 
   const existing = db.findReleaseById(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Release not found.' });
 
-  if (existing.status !== 'Approved' && existing.status !== 'Completed') {
-    return res.status(400).json({ error: 'Pre-save links can only be managed for approved releases.' });
+  if (existing.status !== 'Approved' && existing.status !== 'Delivered') {
+    return res.status(400).json({ error: 'Pre-save links can only be managed when a release is Approved or Delivered.' });
   }
 
   if (!Array.isArray(req.body?.links)) {
@@ -1313,115 +1353,6 @@ apiRouter.patch('/releases/:id/presave-links', authMiddleware, adminOnly, (req: 
   });
 });
 
-
-// ----------------------------------------------------
-// SlacWave MG Smart Pre-Save Pages
-// ----------------------------------------------------
-function safeSlug(value: string): string {
-  return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70);
-}
-function isAllowedSmartlinkHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  return ['soundblast.pro', 'soundblast.de', 'feature.fm', 'ffm.to', 'lnk.to', 'linkfire.com'].some(domain => host === domain || host.endsWith(`.${domain}`));
-}
-function extractSoundBlastMetadata(html: string, sourceUrl: string) {
-  const decodeHtml = (value: string) => value
-    .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&#x([0-9a-f]+);/gi, (_m, hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_m, dec) => String.fromCodePoint(Number(dec))).trim();
-  const getMeta = (key: string) => {
-    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const patterns = [
-      new RegExp(`<meta[^>]+(?:property|name)=["']${escaped}["'][^>]+content=["']([^"']*)["']`, 'i'),
-      new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${escaped}["']`, 'i')
-    ];
-    for (const re of patterns) { const m = html.match(re); if (m?.[1]) return decodeHtml(m[1]); }
-    return '';
-  };
-  const rawHeading = getMeta('og:title') || decodeHtml((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').replace(/<[^>]+>/g, ' '));
-  const artworkUrl = getMeta('og:image') || getMeta('twitter:image');
-  let title = getMeta('music:song') || getMeta('og:music:song') || '';
-  let artist = getMeta('music:musician') || getMeta('music:musician_description') || '';
-  const heading = rawHeading.replace(/\s*[|–—-]\s*(SoundBlast|Feature\.fm).*$/i, '').trim();
-  // Feature.fm / SoundBlast commonly publish the page title as "Track - Artist".
-  if (!title && heading) {
-    const split = heading.match(/^(.+?)\s+[–—-]\s+(.+)$/);
-    if (split) { title = split[1].trim(); if (!artist) artist = split[2].trim(); }
-    else title = heading;
-  }
-  if (!artist) {
-    const description = getMeta('og:description') || getMeta('description');
-    const match = description.match(/(?:by|artist[:\s]+)\s*([^|,;]+)/i);
-    if (match) artist = match[1].trim();
-  }
-
-  const found = new Map<string, string>();
-  const storeNames: Record<string, string> = {
-    spotify: 'Spotify', apple: 'Apple Music', applemusic: 'Apple Music', deezer: 'Deezer',
-    amazon: 'Amazon Music', amazonmusic: 'Amazon Music', soundcloud: 'SoundCloud',
-    tidal: 'TIDAL', youtubemusic: 'YouTube Music', youtube: 'YouTube Music',
-    pandora: 'Pandora', napster: 'Napster', qobuz: 'Qobuz', audiomack: 'Audiomack',
-    boomplay: 'Boomplay', anghami: 'Anghami'
-  };
-  const classify = (url: string, label: string) => {
-    const text = `${label} ${url}`.toLowerCase();
-    const entries: Array<[string, RegExp]> = [
-      ['Spotify', /spotify/], ['Apple Music', /apple\.com|music\.apple/], ['YouTube Music', /music\.youtube|youtube\.com/],
-      ['Deezer', /deezer/], ['TIDAL', /tidal/], ['Amazon Music', /amazon\.(com|co\.)|music\.amazon/],
-      ['SoundCloud', /soundcloud/], ['Audiomack', /audiomack/], ['Boomplay', /boomplay/], ['Anghami', /anghami/], ['TikTok', /tiktok/], ['Pandora', /pandora/], ['Napster', /napster/], ['Qobuz', /qobuz/]
-    ];
-    return entries.find(([, re]) => re.test(text))?.[0] || '';
-  };
-  const anchorRe = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = anchorRe.exec(html)) !== null) {
-    const href = decodeHtml(match[1]);
-    let parsed: URL;
-    try { parsed = new URL(href, sourceUrl); } catch { continue; }
-    // Feature.fm's visible DSP buttons point to api.ffm.to action endpoints.
-    // The cd query parameter is a base64url JSON payload containing the store id.
-    if (parsed.hostname.toLowerCase() === 'api.ffm.to' && /^\/sl\/e\/(?:ps|po)\//.test(parsed.pathname)) {
-      const cd = parsed.searchParams.get('cd') || '';
-      try {
-        const payload = JSON.parse(Buffer.from(cd, 'base64url').toString('utf8'));
-        const service = String(payload.srvc || payload.service || '').toLowerCase();
-        const label = storeNames[service] || service.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        // This is a Feature.fm/Linkfire action endpoint, not a direct DSP release URL.
-        // Never import it as a Listen destination; the admin must provide the provider action separately.
-      } catch { /* Ignore malformed tracking payloads rather than inventing a destination. */ }
-      continue;
-    }
-    const labelText = match[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    const dsp = classify(parsed.toString(), labelText);
-    if (dsp && ['http:', 'https:'].includes(parsed.protocol) && !isAllowedSmartlinkHost(parsed.hostname) && !/linkfire|lnk\.to|ffm\.to/i.test(parsed.hostname)) found.set(dsp, parsed.toString());
-  }
-  // Some Feature.fm versions serialize the same action URLs in script state.
-  // Decode only known api.ffm.to action URLs and retain their original signed query string.
-  const actionRe = /https?:\\?\/\\?\/api\.ffm\.to\\?\/sl\\?\/e\\?\/(?:ps|po)\\?\/[A-Za-z0-9_-]+(?:\?[^\s"'<>\\]+)?/g;
-  for (const raw of html.match(actionRe) || []) {
-    const candidate = raw.replace(/\\\//g, '/').replace(/\\u0026/g, '&').replace(/&amp;/g, '&').replace(/[),]+$/g, '');
-    try {
-      const parsed = new URL(candidate);
-      const cd = parsed.searchParams.get('cd') || '';
-      const payload = JSON.parse(Buffer.from(cd, 'base64url').toString('utf8'));
-      const service = String(payload.srvc || payload.service || '').toLowerCase();
-      const label = storeNames[service] || service.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-      // Do not treat the provider's signed action endpoint as a post-release store URL.
-    } catch { /* Ignore malformed serialized entries. */ }
-  }
-  // Fallback for ordinary, non-Feature.fm smartlink pages.
-  if (found.size === 0) {
-    const urlRe = /https?:\\?\/\\?\/[A-Za-z0-9.-]+[^\s"'<>\\]*/g;
-    for (const raw of html.match(urlRe) || []) {
-      const url = raw.replace(/\\\//g, '/').replace(/\\u0026/g, '&').replace(/&amp;/g, '&').replace(/[),]+$/g, '');
-      const dsp = classify(url, '');
-      if (dsp && /^https?:\/\//i.test(url)) { try { const u = new URL(url); if (!isAllowedSmartlinkHost(u.hostname) && !/linkfire|lnk\.to|ffm\.to/i.test(u.hostname)) found.set(dsp, u.toString()); } catch {} }
-    }
-  }
-  return { title, artist, artworkUrl, dspLinks: [...found].map(([label, url]) => ({ label, url })), sourceUrl };
-}
 
 // ----------------------------------------------------
 // VIDEO DISTRIBUTION SUBMISSIONS (available after VEVO approval)
@@ -1486,137 +1417,6 @@ apiRouter.get('/vevo/applications', authMiddleware, (req: AuthenticatedRequest, 
 apiRouter.patch('/admin/vevo/applications/:id', authMiddleware, adminOnly, (_req: AuthenticatedRequest, res: Response) => {
   return res.status(410).json({ error: 'VEVO application management is no longer available in this portal.' });
 });
-apiRouter.post('/admin/presave/preview', authMiddleware, adminOnly, async (req: AuthenticatedRequest, res: Response) => {
-  const rawUrl = String(req.body?.soundblastUrl || '').trim();
-  let parsed: URL;
-  try { parsed = new URL(rawUrl); } catch { return res.status(400).json({ error: 'Enter a valid external distributor / Feature.fm or Shift Music Linkfire URL.' }); }
-  if (parsed.protocol !== 'https:' || !isAllowedSmartlinkHost(parsed.hostname)) return res.status(400).json({ error: 'For security, use an HTTPS external distributor, Feature.fm or Linkfire smartlink URL.' });
-  try {
-    // Follow only a small number of HTTPS redirects that remain on approved smartlink hosts.
-    let currentUrl = parsed;
-    let response: Awaited<ReturnType<typeof fetch>> | undefined;
-    for (let hop = 0; hop < 5; hop++) {
-      response = await fetch(currentUrl.toString(), { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SlacWaveMGSmartLink/1.0)', 'Accept': 'text/html,application/xhtml+xml' }, redirect: 'manual', signal: AbortSignal.timeout(12000) });
-      if (![301, 302, 303, 307, 308].includes(response.status)) break;
-      const location = response.headers.get('location');
-      if (!location) break;
-      const nextUrl = new URL(location, currentUrl);
-      if (nextUrl.protocol !== 'https:' || !isAllowedSmartlinkHost(nextUrl.hostname)) return res.status(400).json({ error: 'The smartlink redirects outside the supported SoundBlast / Feature.fm domains.' });
-      currentUrl = nextUrl;
-    }
-    if (!response) return res.status(502).json({ error: 'Could not read the source smartlink.' });
-    if ([301, 302, 303, 307, 308].includes(response.status)) return res.status(502).json({ error: 'The source smartlink redirected too many times.' });
-    if (!response.ok) return res.status(502).json({ error: `The source page returned HTTP ${response.status}.` });
-    const html = (await response.text()).slice(0, 3_000_000);
-    const metadata = extractSoundBlastMetadata(html, currentUrl.toString());
-    if (!metadata.title && metadata.dspLinks.length === 0) return res.status(422).json({ error: 'The source page did not expose its track details or DSP destinations. You can still create the page by entering the track title and DSP links manually.' });
-    res.json({ metadata });
-  } catch (error: any) {
-    res.status(502).json({ error: error?.name === 'TimeoutError' ? 'The SoundBlast page took too long to respond.' : 'Could not read this smartlink. You can enter the title and DSP destinations manually.' });
-  }
-});
-
-apiRouter.get('/admin/presave', authMiddleware, adminOnly, (_req: AuthenticatedRequest, res: Response) => {
-  res.json({ pages: db.getPreSavePages() });
-});
-apiRouter.post('/admin/presave', authMiddleware, adminOnly, (req: AuthenticatedRequest, res: Response) => {
-  const title = String(req.body?.title || '').trim();
-  const artist = String(req.body?.artist || '').trim();
-  const soundblastUrl = String(req.body?.soundblastUrl || '').trim();
-  const artworkUrl = String(req.body?.artworkUrl || '').trim();
-  const dspLinks = Array.isArray(req.body?.dspLinks) ? req.body.dspLinks : [];
-  const preSaveLinks = Array.isArray(req.body?.preSaveLinks) ? req.body.preSaveLinks : [];
-  const releaseDate = String(req.body?.releaseDate || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(releaseDate) || Number.isNaN(Date.parse(`${releaseDate}T00:00:00Z`))) return res.status(400).json({ error: 'Enter the scheduled release date (YYYY-MM-DD).' });
-  let parsed: URL;
-  try { parsed = new URL(soundblastUrl); } catch { return res.status(400).json({ error: 'A valid SoundBlast / Feature.fm or Shift Music Linkfire source URL is required.' }); }
-  if (parsed.protocol !== 'https:' || !isAllowedSmartlinkHost(parsed.hostname)) return res.status(400).json({ error: 'Use an HTTPS SoundBlast / Feature.fm or Shift Music Linkfire source URL.' });
-  if (!title || title.length > 140) return res.status(400).json({ error: 'Track title is required (maximum 140 characters).' });
-  if (artist.length > 180) return res.status(400).json({ error: 'Artist name is too long.' });
-  if (dspLinks.length < 1 || dspLinks.length > 30) return res.status(400).json({ error: 'Add at least one direct Listen destination for the release date.' });
-  if (preSaveLinks.length < 1 || preSaveLinks.length > 30) return res.status(400).json({ error: 'Add at least one platform pre-save action URL.' });
-  const cleanLinks: Array<{label:string;url:string}> = [];
-  const cleanPreSaveLinks: Array<{label:string;url:string}> = [];
-  const clean = (items: any[], destination: Array<{label:string;url:string}>, kind: string) => {
-    for (const item of items) {
-    const label = String(item?.label || '').trim().slice(0, 50); const url = String(item?.url || '').trim();
-    let target: URL; try { target = new URL(url); } catch { throw new Error(`Invalid destination URL for ${label || 'DSP'}.`); }
-    if (!label || !['http:', 'https:'].includes(target.protocol)) throw new Error(`Each ${kind} needs a label and a valid HTTP(S) URL.`);
-    if (kind === 'Listen destination' && (isAllowedSmartlinkHost(target.hostname) || /linkfire|lnk\.to|ffm\.to/i.test(target.hostname))) throw new Error('Listen destinations must be direct DSP store URLs, not a Linkfire/Feature.fm/SoundBlast landing page.');
-    if (kind === 'pre-save action URL' && target.toString() === parsed.toString()) throw new Error('A pre-save action must be the platform action URL, not the original Linkfire landing page URL.');
-    destination.push({ label, url: target.toString() });
-    }
-  };
-  try { clean(dspLinks, cleanLinks, 'Listen destination'); clean(preSaveLinks, cleanPreSaveLinks, 'pre-save action URL'); } catch (error: any) { return res.status(400).json({ error: error.message }); }
-  const baseSlug = safeSlug(String(req.body?.slug || title));
-  if (!baseSlug) return res.status(400).json({ error: 'Could not create a URL from that track title.' });
-  let slug = baseSlug; let suffix = 2;
-  while (db.findPreSavePageBySlug(slug)) slug = `${baseSlug}-${suffix++}`;
-  const now = new Date().toISOString();
-  const page: SmartPreSavePage = { id: `presave_${crypto.randomUUID()}`, slug, title, artist, artworkUrl: /^https:\/\//i.test(artworkUrl) ? artworkUrl : undefined, soundblastUrl: parsed.toString(), preSaveLinks: cleanPreSaveLinks, dspLinks: cleanLinks, releaseDate, active: true, createdAt: now, updatedAt: now, listenerStatuses: {} };
-  try { db.createPreSavePage(page); res.status(201).json({ message: 'SlacWave MG pre-save page published.', page }); }
-  catch (error: any) { res.status(409).json({ error: error?.message || 'Could not create this pre-save page.' }); }
-});
-apiRouter.patch('/admin/presave/:id', authMiddleware, adminOnly, (req: AuthenticatedRequest, res: Response) => {
-  const existing = db.getPreSavePages().find(p => p.id === req.params.id);
-  if (!existing) return res.status(404).json({ error: 'Pre-save page not found.' });
-  const updates: any = { updatedAt: new Date().toISOString() };
-  if (typeof req.body?.active === 'boolean') updates.active = req.body.active;
-  if (typeof req.body?.title === 'string' && req.body.title.trim()) updates.title = req.body.title.trim().slice(0, 140);
-  if (typeof req.body?.artist === 'string') updates.artist = req.body.artist.trim().slice(0, 180);
-  if (typeof req.body?.artworkUrl === 'string') updates.artworkUrl = /^https:\/\//i.test(req.body.artworkUrl) ? req.body.artworkUrl : undefined;
-  if (typeof req.body?.releaseDate === 'string') {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.body.releaseDate) || Number.isNaN(Date.parse(`${req.body.releaseDate}T00:00:00Z`))) return res.status(400).json({ error: 'Enter a valid release date (YYYY-MM-DD).' });
-    updates.releaseDate = req.body.releaseDate;
-  }
-  if (typeof req.body?.soundblastUrl === 'string') {
-    try { const source = new URL(req.body.soundblastUrl); if (source.protocol !== 'https:' || !isAllowedSmartlinkHost(source.hostname)) throw new Error(); updates.soundblastUrl = source.toString(); }
-    catch { return res.status(400).json({ error: 'Enter a valid HTTPS Linkfire / Feature.fm / SoundBlast source URL.' }); }
-  }
-  const validatePageLinks = (items: any, kind: 'pre-save action URL' | 'Listen destination') => {
-    if (!Array.isArray(items) || items.length < 1 || items.length > 30) throw new Error(`Add between 1 and 30 ${kind} links.`);
-    return items.map((item: any) => {
-      const label = String(item?.label || '').trim().slice(0, 50); const url = String(item?.url || '').trim();
-      let target: URL; try { target = new URL(url); } catch { throw new Error(`Invalid URL for ${label || kind}.`); }
-      if (!label || !['http:', 'https:'].includes(target.protocol)) throw new Error(`Each ${kind} needs a label and a valid HTTP(S) URL.`);
-      if (kind === 'Listen destination' && (isAllowedSmartlinkHost(target.hostname) || /linkfire|lnk\.to|ffm\.to/i.test(target.hostname))) throw new Error('Listen destinations must be direct DSP store URLs.');
-      return { label, url: target.toString() };
-    });
-  };
-  try {
-    if (req.body?.preSaveLinks !== undefined) updates.preSaveLinks = validatePageLinks(req.body.preSaveLinks, 'pre-save action URL');
-    if (req.body?.dspLinks !== undefined) updates.dspLinks = validatePageLinks(req.body.dspLinks, 'Listen destination');
-  } catch (error: any) { return res.status(400).json({ error: error.message }); }
-  const page = db.updatePreSavePage(existing.id, updates);
-  res.json({ page });
-});
-apiRouter.delete('/admin/presave/:id', authMiddleware, adminOnly, (req: AuthenticatedRequest, res: Response) => {
-  if (!db.deletePreSavePage(req.params.id)) return res.status(404).json({ error: 'Pre-save page not found.' });
-  res.json({ message: 'Pre-save page deleted.' });
-});
-apiRouter.post('/public/presave/:slug/status', (req: Request, res: Response) => {
-  const page = db.findPreSavePageBySlug(String(req.params.slug || ''));
-  if (!page || !page.active) return res.status(404).json({ error: 'This pre-save page is unavailable.' });
-  const visitorId = String(req.body?.visitorId || '').trim();
-  const status = String(req.body?.status || '');
-  if (!/^[a-f0-9-]{20,80}$/i.test(visitorId) || !['started', 'pre-saved'].includes(status)) return res.status(400).json({ error: 'Invalid listener status update.' });
-  const statuses = { ...(page.listenerStatuses || {}) };
-  statuses[visitorId] = status as 'started' | 'pre-saved';
-  db.updatePreSavePage(page.id, { listenerStatuses: statuses, updatedAt: new Date().toISOString() });
-  return res.json({ status, message: status === 'pre-saved' ? 'Your confirmation has been recorded.' : 'Pre-save started.' });
-});
-apiRouter.get('/public/presave/:slug', (req: Request, res: Response) => {
-  const page = db.findPreSavePageBySlug(String(req.params.slug || ''));
-  if (!page || !page.active) return res.status(404).json({ error: 'This pre-save page is unavailable.' });
-  const dateParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
-  const today = `${dateParts.find(p => p.type === 'year')?.value}-${dateParts.find(p => p.type === 'month')?.value}-${dateParts.find(p => p.type === 'day')?.value}`;
-  const phase = page.releaseDate && today >= page.releaseDate ? 'smartlink' : 'presave';
-  const { listenerStatuses, ...publicPage } = page;
-  res.setHeader('Cache-Control', 'no-store');
-  res.json({ page: { ...publicPage, phase, preSavedCount: Object.values(listenerStatuses || {}).filter(v => v === 'pre-saved').length } });
-});
-
-
 // Admin Mark Release Completed / Distributed
 apiRouter.post('/releases/:id/complete', authMiddleware, adminOnly, async (req: AuthenticatedRequest, res: Response) => {
   const existing = db.findReleaseById(req.params.id);

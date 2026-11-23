@@ -70,6 +70,8 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   );
   const [spotifyClaimSaving, setSpotifyClaimSaving] = useState(false);
   const [spotifyClaimMessage, setSpotifyClaimMessage] = useState<string | null>(null);
+  const [topicChannelCount, setTopicChannelCount] = useState('1');
+  const [originalYoutubeChannel, setOriginalYoutubeChannel] = useState('');
 
   useEffect(() => {
     if (!user || user.role !== 'client') return;
@@ -334,10 +336,8 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
           <p className="text-[10px] font-black uppercase tracking-[.22em] text-emerald-400">Artist services · no SlacWave MG application fee</p>
           <h2 className="mt-1 text-lg font-bold text-white">YouTube Official Artist Channel & Content ID</h2>
           <p className="mt-2 max-w-3xl text-xs leading-5 text-neutral-400">Request a free YouTube Official Artist Channel application or ask SlacWave MG to review an eligible recording for YouTube Content ID. These services are subject to YouTube and distribution-partner eligibility, rights checks and approval.</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <a href={`mailto:mogaursa4@gmail.com,remoabetswemolefi@gmail.com?subject=${encodeURIComponent('Free YouTube Official Artist Channel Request')}&body=${encodeURIComponent(`Artist: ${user?.artistName || user?.name || ''}\nAccount email: ${user?.email || ''}\n\nPlease review my eligibility for a YouTube Official Artist Channel request.`)}`} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white">Request free YouTube OAC</a>
-            <a href={`mailto:mogaursa4@gmail.com,remoabetswemolefi@gmail.com?subject=${encodeURIComponent('YouTube Content ID Eligibility Review')}&body=${encodeURIComponent(`Artist: ${user?.artistName || user?.name || ''}\nAccount email: ${user?.email || ''}\n\nPlease review my recording(s) for YouTube Content ID eligibility.`)}`} className="rounded-xl border border-emerald-700 px-4 py-2.5 text-xs font-bold text-emerald-300">Request Content ID review</a>
-          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-xs text-neutral-300">Number of Topic channel links required<input type="number" min="1" value={topicChannelCount} onChange={e=>setTopicChannelCount(e.target.value)} className="mt-1 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-white"/></label><label className="text-xs text-neutral-300">One original YouTube channel URL<input type="url" value={originalYoutubeChannel} onChange={e=>setOriginalYoutubeChannel(e.target.value)} placeholder="https://www.youtube.com/@YourChannel" className="mt-1 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-white"/></label></div>
+          <div className="mt-3 flex flex-wrap gap-2"><a href={`mailto:mogaursa4@gmail.com,remoabetswemolefi@gmail.com?subject=${encodeURIComponent('Free YouTube Official Artist Channel Request')}&body=${encodeURIComponent(`Artist: ${user?.artistName || user?.name || ''}\nAccount email: ${user?.email || ''}\nTopic channel links required: ${topicChannelCount}\nOriginal YouTube channel: ${originalYoutubeChannel}\n\nPlease review my eligibility for a YouTube Official Artist Channel request.`)}`} onClick={e=>{if(!originalYoutubeChannel.trim()||!/^https?:\/\//i.test(originalYoutubeChannel)){e.preventDefault();alert('Enter one valid original YouTube channel URL first.');}else if(!Number.isInteger(Number(topicChannelCount))||Number(topicChannelCount)<1){e.preventDefault();alert('Enter the number of Topic channel links required.');}}} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white">Request free YouTube OAC</a><a href={`mailto:mogaursa4@gmail.com,remoabetswemolefi@gmail.com?subject=${encodeURIComponent('YouTube Content ID Eligibility Review')}&body=${encodeURIComponent(`Artist: ${user?.artistName || user?.name || ''}\nAccount email: ${user?.email || ''}\n\nPlease review my recording(s) for YouTube Content ID eligibility.`)}`} className="rounded-xl border border-emerald-700 px-4 py-2.5 text-xs font-bold text-emerald-300">Request Content ID review</a></div>
         </section>
 
         {/* Spotify for Artists claim checklist */}

@@ -54,6 +54,7 @@ export interface ArtistCredit {
   appleMusicProfileUrl?: string;
   spotifyProfileCreateRequested?: boolean;
   appleMusicProfileCreateRequested?: boolean;
+  socialMediaLinks?: string[];
 }
 
 export interface TrackItem {

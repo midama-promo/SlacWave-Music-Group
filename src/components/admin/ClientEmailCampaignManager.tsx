@@ -2,23 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, Eye, History, Mail, RefreshCw, Search, Send, ShieldCheck, Users } from 'lucide-react';
 import { api, EmailCampaignHistoryItem, EmailCampaignRecipientView } from '../../services/api';
 
-const DEFAULT_SUBJECT = 'Important: Your SlacWave MG Account Requires Re-registration';
-const DEFAULT_MESSAGE = `We are making changes to the SlacWave MG client portal. To regain access to your dashboard, you are required to register again.
-
-Please note that your previously distributed releases have NOT been removed from digital streaming platforms (DSPs). Your music remains available on the platforms where it was already distributed.
-
-If you previously had a catalogue with SlacWave MG, your existing catalogue records will gradually and automatically reappear in your dashboard as records are restored. This process may take some time.
-
-You do NOT need to resubmit music that has already been distributed. Please do not create duplicate release submissions for music that is already live.
-
-If you need assistance with re-registration or your account, contact SlacWave MG at mogaursa4@gmail.com.`;
-
 export const ClientEmailCampaignManager: React.FC = () => {
   const [recipients, setRecipients] = useState<EmailCampaignRecipientView[]>([]);
   const [campaigns, setCampaigns] = useState<EmailCampaignHistoryItem[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
-  const [subject, setSubject] = useState(DEFAULT_SUBJECT);
-  const [message, setMessage] = useState(DEFAULT_MESSAGE);
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
   const [search, setSearch] = useState('');
   const [preview, setPreview] = useState(false);
   const [loading, setLoading] = useState(true);
