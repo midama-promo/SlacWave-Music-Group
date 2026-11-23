@@ -132,6 +132,9 @@ export interface Release {
   targetReleaseDate: string;
   previouslyReleased: boolean;
   previousReleaseDetails?: string;
+  originalReleaseDate?: string;
+  previousISRC?: string;
+  previousUPC?: string;
   cLine?: string;
   pLine?: string;
   artworkUrl: string;

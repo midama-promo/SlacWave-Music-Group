@@ -59,12 +59,13 @@ class ApiService {
       headers['Content-Type'] = 'application/json';
     }
 
-    const response = await fetch(endpoint, {
-      ...options,
-      cache: 'no-store',
-      credentials: 'include',
-      headers,
-    });
+    let response: Response;
+    try {
+      response = await fetch(endpoint, { ...options, cache: 'no-store', credentials: 'include', headers });
+    } catch (networkError: any) {
+      const detail = networkError?.message || 'Network request failed';
+      throw new Error(`Could not reach the SlacWave server (${endpoint}). Check that the Render service is live and try again. Details: ${detail}`);
+    }
 
     const data = await response.json().catch(() => ({}));
 

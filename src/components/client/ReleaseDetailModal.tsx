@@ -455,6 +455,17 @@ export const ReleaseDetailModal: React.FC<ReleaseDetailModalProps> = ({
                   </div>
                 )}
 
+                {release.previouslyReleased && (
+                  <div className="col-span-2 sm:col-span-3 rounded-lg border border-neutral-800 bg-neutral-950/50 p-3">
+                    <span className="text-[10px] font-mono text-amber-300 uppercase block">Previously released — original identifiers</span>
+                    <div className="mt-1 grid gap-2 sm:grid-cols-3 text-xs text-neutral-300">
+                      <span>Original release date: {release.originalReleaseDate || 'Not supplied'}</span>
+                      <span>ISRC: {release.previousISRC || 'Not supplied'}</span>
+                      <span>UPC: {release.previousUPC || 'Not supplied'}</span>
+                    </div>
+                  </div>
+                )}
+
                 {release.approvalDate && (
                   <div>
                     <span className="text-[10px] font-mono text-emerald-400 uppercase block">Approval Date</span>
