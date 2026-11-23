@@ -28,6 +28,7 @@ import type {
   WithdrawalRequest,
   VevoApplication,
   VideoSubmission,
+  ArtistCredit,
 } from './db.ts';
 import { sendNotification, sendAdminReleaseEmail, sendAdminEnquiryEmail, sendAdminTakedownEmail, sendAdminVevoApplicationEmail, sendAdminVideoSubmissionEmail, sendVideoSubmissionStatusEmail, sendAnnouncementBatch } from './mailer.ts';
 import { requestEmailOtp, verifyEmailOtp } from './otp.ts';
@@ -228,6 +229,18 @@ function adminOnly(req: AuthenticatedRequest, res: Response, next: NextFunction)
   next();
 }
 
+// Artist records are stored on the owning client account in the authoritative Neon state.
+// A single saved artist can be used as either a primary or featured artist on any release.
+function upsertClientArtistLibrary(userId: string, incoming: Array<Partial<ArtistCredit> & { name?: string }>): ArtistCredit[] {
+  return db.upsertUserArtists(userId, incoming);
+}
+
+function artistCreditsFromNames(primary: string[], featured: string[]): ArtistCredit[] {
+  return [
+    ...primary.map(name => ({ name, role: 'primary' as const })),
+    ...featured.map(name => ({ name, role: 'featured' as const })),
+  ];
+}
 
 const PLAN_CONFIG = {
   free: { id: 'free' as const, name: 'Unlimited Artist Access', amountZar: 0, amountKobo: 0, monthlyReleaseLimit: null as number | null, artistLimit: null as number | null },
@@ -1055,54 +1068,6 @@ apiRouter.get('/assets/:encoded', (req: Request, res: Response) => {
 // ----------------------------------------------------
 // RELEASES API
 // ----------------------------------------------------
-
-// ----------------------------------------------------
-// CLIENT ARTIST LIBRARY — private to the authenticated client
-// ----------------------------------------------------
-apiRouter.post('/artists', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
-  const user = req.user!;
-  if (user.role !== 'client') return res.status(403).json({ error: 'This endpoint is for client accounts.' });
-  const name = String(req.body?.name || '').trim();
-  if (!name) return res.status(400).json({ error: 'Artist name is required.' });
-  const spotifyProfileUrl = String(req.body?.spotifyProfileUrl || '').trim();
-  const appleMusicProfileUrl = String(req.body?.appleMusicProfileUrl || '').trim();
-  const spotifyProfileCreateRequested = !!req.body?.spotifyProfileCreateRequested;
-  const appleMusicProfileCreateRequested = !!req.body?.appleMusicProfileCreateRequested;
-  const validUrl = (value: string) => {
-    if (!value) return true;
-    try { const parsed = new URL(value); return parsed.protocol === 'http:' || parsed.protocol === 'https:'; }
-    catch { return false; }
-  };
-  if (!validUrl(spotifyProfileUrl) || !validUrl(appleMusicProfileUrl)) {
-    return res.status(400).json({ error: 'Artist profile links must be valid HTTP or HTTPS URLs.' });
-  }
-  if ((!spotifyProfileUrl && !spotifyProfileCreateRequested) || (!appleMusicProfileUrl && !appleMusicProfileCreateRequested)) {
-    return res.status(400).json({ error: 'Provide an existing Spotify and Apple Music profile link, or request creation for each missing profile.' });
-  }
-  const library = Array.isArray(user.artistLibrary) ? [...user.artistLibrary] : [];
-  const existingIndex = library.findIndex((artist: any) => String(artist.name || '').trim().toLocaleLowerCase() === name.toLocaleLowerCase());
-  const previous = existingIndex >= 0 ? library[existingIndex] : {};
-  const artist = {
-    ...previous,
-    id: previous.id || `artist_${crypto.randomUUID()}`,
-    name: previous.name || name,
-    spotifyProfileUrl: spotifyProfileCreateRequested ? undefined : (spotifyProfileUrl || previous.spotifyProfileUrl),
-    appleMusicProfileUrl: appleMusicProfileCreateRequested ? undefined : (appleMusicProfileUrl || previous.appleMusicProfileUrl),
-    spotifyProfileCreateRequested: spotifyProfileCreateRequested || (!!previous.spotifyProfileCreateRequested && !spotifyProfileUrl),
-    appleMusicProfileCreateRequested: appleMusicProfileCreateRequested || (!!previous.appleMusicProfileCreateRequested && !appleMusicProfileUrl),
-  };
-  if (existingIndex >= 0) library[existingIndex] = artist as any;
-  else library.push(artist as any);
-  db.updateUser(user.id, { artistLibrary: library });
-  return res.status(200).json({ artist, artists: library });
-});
-
-apiRouter.get('/artists', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
-  if (req.user!.role !== 'client') return res.status(403).json({ error: 'This endpoint is for client accounts.' });
-  const artists = Array.isArray(req.user!.artistLibrary) ? req.user!.artistLibrary : [];
-  return res.json({ artists });
-});
-
 apiRouter.get('/releases', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
   if (user.role === 'admin') {
@@ -1134,6 +1099,7 @@ apiRouter.patch('/releases/:id/royalty', authMiddleware, adminOnly, (req: Authen
   res.json({ message: `Gross royalty R${gross.toFixed(2)} split: artist R${artistShare.toFixed(2)} (80%), SlacWave MG R${labelShare.toFixed(2)} (20%).`, release: updated });
 });
 
+
 apiRouter.get('/releases/:id', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
   const release = db.findReleaseById(req.params.id);
@@ -1148,6 +1114,63 @@ apiRouter.get('/releases/:id', authMiddleware, (req: AuthenticatedRequest, res: 
   }
 
   res.json({ release });
+});
+
+// ----------------------------------------------------
+// CLIENT ARTIST LIBRARY — private to the authenticated client
+// ----------------------------------------------------
+apiRouter.post('/artists', authMiddleware, activeClientOnly, (req: AuthenticatedRequest, res: Response) => {
+  const user = req.user!;
+  if (user.role !== 'client') return res.status(403).json({ error: 'This endpoint is for client accounts.' });
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Artist name is required.' });
+  if (name.length > 180) return res.status(400).json({ error: 'Artist names must be 180 characters or fewer.' });
+  const spotifyProfileUrl = String(req.body?.spotifyProfileUrl || '').trim();
+  const appleMusicProfileUrl = String(req.body?.appleMusicProfileUrl || '').trim();
+  const validUrl = (value: string) => {
+    if (!value) return true;
+    try { const parsed = new URL(value); return parsed.protocol === 'http:' || parsed.protocol === 'https:'; }
+    catch { return false; }
+  };
+  if (!validUrl(spotifyProfileUrl) || !validUrl(appleMusicProfileUrl)) return res.status(400).json({ error: 'Artist profile links must be valid HTTP or HTTPS URLs.' });
+  const incoming: Partial<ArtistCredit> = {
+    name,
+    role: req.body?.role === 'featured' ? 'featured' : req.body?.role === 'primary' ? 'primary' : undefined,
+    spotifyProfileUrl: spotifyProfileUrl || undefined,
+    appleMusicProfileUrl: appleMusicProfileUrl || undefined,
+    spotifyProfileCreateRequested: req.body?.spotifyProfileCreateRequested,
+    appleMusicProfileCreateRequested: req.body?.appleMusicProfileCreateRequested,
+    socialMediaLinks: Array.isArray(req.body?.socialMediaLinks) ? req.body.socialMediaLinks : undefined,
+  };
+  const artists = upsertClientArtistLibrary(user.id, [incoming]);
+  const normalized = name.normalize('NFKC').toLocaleLowerCase('en-US');
+  const artist = artists.find(item => item.name.normalize('NFKC').toLocaleLowerCase('en-US') === normalized);
+  return res.status(200).json({ message: 'Artist saved to your SlacWave artist library.', artist, artists });
+});
+
+apiRouter.get('/artists', authMiddleware, activeClientOnly, (req: AuthenticatedRequest, res: Response) => {
+  const user = req.user!;
+  if (user.role !== 'client') return res.status(403).json({ error: 'This endpoint is for client accounts.' });
+  const legacyArtists: ArtistCredit[] = [];
+  for (const release of db.getReleasesByUserId(user.id)) {
+    legacyArtists.push(...(release.primaryArtistProfiles || []).map(item => ({ ...item, role: 'primary' as const })));
+    legacyArtists.push(...(release.featuredArtistProfiles || []).map(item => ({ ...item, role: 'featured' as const })));
+    legacyArtists.push(...(release.primaryArtists || []).map(name => ({ name, role: 'primary' as const })));
+    legacyArtists.push(...(release.featuredArtists || []).map(name => ({ name, role: 'featured' as const })));
+  }
+  for (const video of db.getVideoSubmissionsForUser(user.id)) {
+    legacyArtists.push(...(video.primaryArtists || [video.artistName]).filter(Boolean).map(name => ({ name, role: 'primary' as const })));
+    legacyArtists.push(...(video.featuredArtists || []).map(name => ({ name, role: 'featured' as const })));
+  }
+  const currentLibrary = Array.isArray(user.artistLibrary) ? user.artistLibrary : [];
+  const knownNames = new Set(currentLibrary.map(item => String(item.name || '').normalize('NFKC').toLocaleLowerCase('en-US')));
+  const missingLegacyArtists = legacyArtists.filter(item => {
+    const normalized = item.name.normalize('NFKC').toLocaleLowerCase('en-US');
+    if (knownNames.has(normalized)) return false;
+    knownNames.add(normalized);
+    return true;
+  });
+  return res.json({ artists: missingLegacyArtists.length ? upsertClientArtistLibrary(user.id, missingLegacyArtists) : currentLibrary });
 });
 
 const SLACWAVE_CONTRACT_VERSION = '2026-11-v1';
@@ -1222,6 +1245,12 @@ apiRouter.post('/releases', authMiddleware, activeClientOnly, async (req: Authen
     statusHistory: [{ status: 'Pending Review', note: 'New SlacWave MG audio release submitted.', timestamp: now, updatedBy: user.name }], grossRoyaltyAmount: 0, royaltyAmount: 0, labelShareAmount: 0,
   };
   db.createRelease(release);
+  const audioArtistProfiles = [
+    ...(Array.isArray(body.primaryArtistProfiles) ? body.primaryArtistProfiles.map((artist: any) => ({ ...artist, role: 'primary' as const })) : []),
+    ...(Array.isArray(body.featuredArtistProfiles) ? body.featuredArtistProfiles.map((artist: any) => ({ ...artist, role: 'featured' as const })) : []),
+    ...artistCreditsFromNames(primaryArtists, Array.isArray(body.featuredArtists) ? body.featuredArtists.map((x: any) => String(x).trim()).filter(Boolean) : []),
+  ];
+  upsertClientArtistLibrary(user.id, audioArtistProfiles);
   const baseUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
   void sendAdminReleaseEmail(release, baseUrl).catch(err => console.error('[RELEASE] Admin notification failed:', err));
   res.status(201).json({ message: 'Your audio release has been submitted to SlacWave MG for review.', release });
@@ -1384,6 +1413,7 @@ apiRouter.post('/video-submissions', authMiddleware, activeClientOnly, (req: Aut
   const now = new Date().toISOString();
   const item: VideoSubmission = { id: `vid_${crypto.randomUUID()}`, userId: user.id, userEmail: user.email, clientName: user.name, artistName: videoPrimaryArtists.join(', ').slice(0,500), primaryArtists: videoPrimaryArtists, featuredArtists: videoFeaturedArtists, description: String(description).trim().slice(0,10000), youtubeDescription: String(youtubeDescription || '').slice(0,10000) || undefined, lyrics: String(lyrics || '').slice(0,20000) || undefined, videoTitle: String(videoTitle).trim().slice(0,180), videoType: ['Official Music Video','Visualizer','Lyric Video','Other'].includes(videoType) ? videoType : 'Official Music Video', videoUrl: '', videoFilename: '', storedVideoFilename: undefined, fileSize: 0, artworkUrl: String(artworkUrl), artworkFilename: String(artworkFilename || 'video-cover.jpg'), storedArtworkFilename: String(storedArtworkFilename), genre: String(genre || '').trim(), subGenre: String(subGenre || '').trim(), songLanguage: String(songLanguage || language || '').trim(), lyricsLanguage: String(lyricsLanguage || '').trim(), version: String(version || '1.0').trim().slice(0,40), labelName: String(labelName || '').trim().slice(0,180), publisher: String(publisher || '').trim().slice(0,180), lyricist: String(lyricist || '').trim().slice(0,180), composer: String(composer || '').trim().slice(0,180), contributors: String(contributors || '').trim(), dspSelections: Array.isArray(dspSelections) ? dspSelections : [], director: String(director || '').trim().slice(0,180) || undefined, language: String(language || '').trim().slice(0,80) || undefined, explicit: !!explicit, releaseDate: String(releaseDate || '').trim() || undefined, notes: String(notes || '').trim().slice(0,3000) || undefined, status: 'Pending Review', grossRoyaltyAmount: 0, royaltyAmount: 0, labelShareAmount: 0, createdAt: now, updatedAt: now };
   db.createVideoSubmission(item);
+  upsertClientArtistLibrary(user.id, artistCreditsFromNames(videoPrimaryArtists, videoFeaturedArtists));
   void Promise.all([
     sendAdminVideoSubmissionEmail({ videoTitle: item.videoTitle, artistName: item.artistName, videoType: item.videoType, clientName: user.name, email: user.email, director: item.director, language: item.language, releaseDate: item.releaseDate, notes: `${item.description || ''}\nYouTube description: ${item.youtubeDescription || ''}\nLyrics: ${item.lyrics || ''}\n${item.notes || ''}\nCover artwork: ${item.artworkUrl}\nVideo master to be sent by client via WhatsApp to 078 629 5032.`, createdAt: now }),
     sendNotification({ recipientEmail: 'mogaursa4@gmail.com, remoabetswemolefi@gmail.com', recipientName: 'SlacWave MG Administration', subject: `New Video Distribution Submission — ${item.videoTitle}`, template: 'submission_received', metadata: { submissionId: item.id, artistName: item.artistName, clientName: user.name, clientEmail: user.email, videoTitle: item.videoTitle, status: item.status } }),

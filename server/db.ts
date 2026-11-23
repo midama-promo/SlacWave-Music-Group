@@ -971,6 +971,40 @@ class Database {
     });
   }
 
+  // Merge artist records atomically inside the authoritative state mutation so concurrent
+  // requests or multiple Render instances cannot overwrite one another's newly saved artists.
+  upsertUserArtists(id: string, incoming: Array<Partial<ArtistCredit> & { name?: string }>): ArtistCredit[] {
+    return this.mutate((data) => {
+      const user = data.users.find(item => item.id === id);
+      if (!user || user.role !== 'client') return [];
+      const library: ArtistCredit[] = Array.isArray(user.artistLibrary) ? [...user.artistLibrary] : [];
+      for (const raw of incoming) {
+        const name = String(raw?.name || '').trim().replace(/\s+/g, ' ').slice(0, 180);
+        if (!name) continue;
+        const normalized = name.normalize('NFKC').toLocaleLowerCase('en-US');
+        const index = library.findIndex(item => String(item.name || '').normalize('NFKC').toLocaleLowerCase('en-US') === normalized);
+        const existing = index >= 0 ? library[index] : undefined;
+        const saved: ArtistCredit = {
+          ...(existing || {}),
+          id: existing?.id || String(raw.id || `artist_${crypto.randomUUID()}`),
+          name,
+          role: raw.role === 'featured' ? 'featured' : raw.role === 'primary' ? 'primary' : existing?.role,
+          spotifyProfileUrl: raw.spotifyProfileUrl !== undefined ? String(raw.spotifyProfileUrl || '').trim().slice(0, 500) || undefined : existing?.spotifyProfileUrl,
+          appleMusicProfileUrl: raw.appleMusicProfileUrl !== undefined ? String(raw.appleMusicProfileUrl || '').trim().slice(0, 500) || undefined : existing?.appleMusicProfileUrl,
+          spotifyProfileCreateRequested: raw.spotifyProfileCreateRequested !== undefined ? !!raw.spotifyProfileCreateRequested : existing?.spotifyProfileCreateRequested,
+          appleMusicProfileCreateRequested: raw.appleMusicProfileCreateRequested !== undefined ? !!raw.appleMusicProfileCreateRequested : existing?.appleMusicProfileCreateRequested,
+          socialMediaLinks: Array.isArray(raw.socialMediaLinks)
+            ? raw.socialMediaLinks.map(value => String(value || '').trim()).filter(Boolean).slice(0, 10)
+            : existing?.socialMediaLinks,
+        };
+        if (index >= 0) library[index] = saved;
+        else library.push(saved);
+      }
+      user.artistLibrary = library;
+      return library;
+    });
+  }
+
   deleteUser(id: string): boolean {
     return this.mutate((data) => {
       const target = data.users.find(u => u.id === id);

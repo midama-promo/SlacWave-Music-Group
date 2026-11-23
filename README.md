@@ -26,10 +26,14 @@ Set the Render environment variable `ADMIN_NOTIFICATION_EMAIL` to `mogaursa4@gma
 - Verify the 300+ music stores / 100+ video stores and free YouTube OAC / Content ID / video-distribution offers against the actual external distribution agreement before publishing those promises.
 - Platform delivery and VEVO / OAC / Content ID acceptance remain subject to third-party eligibility and approval.
 - The video workflow accepts metadata and cover artwork in the portal; artists send the actual master separately to WhatsApp `078 629 5032`.
-- Audio release submission is rebuilt for Single / EP / Album, WAV/FLAC uploads, square artwork, metadata, selected DSPs and a 14-day minimum release window. Confirm all platform-specific bit-depth/sample-rate metadata before delivery; this build checks the file type and artwork dimensions but does not parse every audio codec property.
+- Audio release submission is rebuilt for Single / EP / Album, WAV/FLAC uploads, square artwork, metadata, selected DSPs and a 7-day minimum release window. Confirm all platform-specific bit-depth/sample-rate metadata before delivery; this build checks the file type and artwork dimensions but does not parse every audio codec property.
 - YouTube OAC and Content ID requests are sent to both SlacWave MG administrators for manual eligibility review; YouTube and distribution partners make the final decision.
 - Have a South African attorney review the artist agreement and payout clauses before collecting signatures or handling royalty payments.
 - Card numbers, CVVs, PINs and OTPs are deliberately not collected. Bank account details are sufficient for EFT payouts.
+
+## Artist library
+- Each client account has a persistent artist library stored in the authoritative Neon application state. Names entered in audio or video submissions are saved when the client clicks Add Primary/Featured Artist or submits the release.
+- The same saved artist can be selected as either a primary or featured artist in future audio and video submissions. Duplicate names are merged case-insensitively. Existing artist names from that client's historical audio releases and video submissions are imported into the library the first time it is loaded.
 
 ## Artist terms and royalty handling
 - Artist agreements are required before audio or video submission. A generated artist-name electronic signature and timestamp are saved on the user record; the signed plain-text agreement is downloadable by the artist and administrator.
