@@ -208,6 +208,8 @@ class ApiService {
     return this.request<{ releases: Release[] }>('/api/releases');
   }
 
+  async deleteRelease(id: string): Promise<{ success: boolean; message: string }> { return this.request(`/api/releases/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+
   async getRelease(id: string): Promise<{ release: Release }> {
     return this.request<{ release: Release }>(`/api/releases/${id}`);
   }
@@ -250,6 +252,7 @@ class ApiService {
   }
   async submitVideoSubmission(payload: any): Promise<{ message: string; submission: any }> { return this.request('/api/video-submissions', { method: 'POST', body: JSON.stringify(payload) }); }
   async getVideoSubmissions(): Promise<{ submissions: any[] }> { return this.request('/api/video-submissions'); }
+  async deleteVideoSubmission(id: string): Promise<{ success: boolean; message: string }> { return this.request(`/api/admin/video-submissions/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
   async updateVideoSubmission(id: string, payload: { status?: 'Pending Review'|'Approved'|'Corrections Required'|'Denied'|'Rejected'|'Delivered'; adminNote?: string; grossRoyaltyAmount?: number }): Promise<{ message: string; submission: any }> { return this.request(`/api/admin/video-submissions/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
 
   async updatePreSaveLinks(id: string, links: Array<{ id?: string; label: string; url: string }>): Promise<{ message: string; release: Release }> {

@@ -149,6 +149,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (onStatusUpdated) onStatusUpdated(updated);
   };
 
+  const handleDeleteRelease = async (release: Release) => {
+    const confirmed = window.confirm(`Permanently delete ${release.title} (${release.refNumber})? This cannot be undone.`);
+    if (!confirmed) return;
+    try {
+      await api.deleteRelease(release.id);
+      setReleases(prev => prev.filter(item => item.id !== release.id));
+      alert(`Release ${release.refNumber} was deleted.`);
+    } catch (err: any) {
+      alert(err.message || 'Could not delete this release submission.');
+    }
+  };
+
   const openPreSaveManager = (rel: Release) => {
     setPreSaveRelease(rel);
     setPreSaveLabel('Pre-save');
@@ -984,6 +996,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition-colors shadow-sm"
                               >
                                 Review & Decide
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteRelease(rel)}
+                                className="px-3 py-1 bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 rounded-lg text-xs font-semibold transition-colors"
+                                title="Permanently delete submission"
+                              >
+                                Delete
                               </button>
                             </div>
                           </td>

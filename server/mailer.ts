@@ -113,14 +113,39 @@ export async function sendNotification(options: SendNotificationOptions): Promis
   return notif;
 }
 
+function platformLabel(url: string, index: number): string {
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    const known: Array<[string, string]> = [
+      ['instagram.com', 'Instagram'], ['spotify.com', 'Spotify'], ['music.apple.com', 'Apple Music'],
+      ['tiktok.com', 'TikTok'], ['facebook.com', 'Facebook'], ['youtube.com', 'YouTube'],
+      ['youtu.be', 'YouTube'], ['x.com', 'X'], ['twitter.com', 'X'],
+      ['soundcloud.com', 'SoundCloud'], ['audiomack.com', 'Audiomack'],
+    ];
+    return known.find(([domain]) => host === domain || host.endsWith(`.${domain}`))?.[1] || `Social link ${index + 1}`;
+  } catch { return `Social link ${index + 1}`; }
+}
+
 function artistProfileLines(release: Release): string {
   const all = [
-    ...(release.primaryArtistProfiles || []),
-    ...(release.featuredArtistProfiles || []),
+    ...(release.primaryArtistProfiles || []).map(a => ({ ...a, role: 'PRIMARY' })),
+    ...(release.featuredArtistProfiles || []).map(a => ({ ...a, role: 'FEATURED' })),
   ];
-  const lines = all.map(a => `- ${a.role || 'artist'}: ${a.name}\n  Spotify: ${a.spotifyProfileUrl || 'PROFILE CREATION REQUESTED'}\n  Apple Music: ${a.appleMusicProfileUrl || 'PROFILE CREATION REQUESTED'}`);
-  release.tracks.forEach((t, i) => {
-    (t.artistProfiles || []).forEach(a => lines.push(`- Track ${i + 1} ${a.role || 'artist'}: ${a.name}\n  Spotify: ${a.spotifyProfileUrl || 'PROFILE CREATION REQUESTED'}\n  Apple Music: ${a.appleMusicProfileUrl || 'PROFILE CREATION REQUESTED'}`));
+  const lines: string[] = [];
+  for (const artist of all) {
+    lines.push(`${artist.role} ARTIST: ${artist.name}`);
+    (artist.socialMediaLinks || []).forEach((url, index) => lines.push(`  ${platformLabel(url, index)}: ${url}`));
+    if (artist.spotifyProfileUrl) lines.push(`  Spotify: ${artist.spotifyProfileUrl}`);
+    if (artist.appleMusicProfileUrl) lines.push(`  Apple Music: ${artist.appleMusicProfileUrl}`);
+    if (artist.spotifyProfileCreateRequested || artist.appleMusicProfileCreateRequested) lines.push('  New Spotify / Apple Music profile creation requested');
+  }
+  (release.tracks || []).forEach((track, trackIndex) => {
+    (track.artistProfiles || []).forEach(artist => {
+      lines.push(`TRACK ${trackIndex + 1} ARTIST (${artist.role || 'artist'}): ${artist.name}`);
+      (artist.socialMediaLinks || []).forEach((url, index) => lines.push(`  ${platformLabel(url, index)}: ${url}`));
+      if (artist.spotifyProfileUrl) lines.push(`  Spotify: ${artist.spotifyProfileUrl}`);
+      if (artist.appleMusicProfileUrl) lines.push(`  Apple Music: ${artist.appleMusicProfileUrl}`);
+    });
   });
   return lines.length ? lines.join('\n') : 'No artist profile links supplied.';
 }
@@ -171,6 +196,27 @@ ${tracklistSummary}
 
 CLIENT NOTES:
 ${release.clientNotes || 'None'}
+
+ADDITIONAL SUBMISSION METADATA:
+Label name: ${release.labelName || 'Not supplied'}
+Lyrics language: ${release.lyricsLanguage || 'Not supplied'}
+Version: ${release.version || 'Not supplied'}
+Preview start (seconds): ${release.previewStart ?? 'Not supplied'}
+Requested DSPs (submission order): ${(release.dspSelections || []).join(', ') || 'None selected'}
+Publishers: ${(release.publishers || []).join(', ') || 'None supplied'}
+Lyrics:
+${release.lyrics || 'None supplied'}
+Previously released: ${release.previouslyReleased ? 'Yes' : 'No'}
+Original release date: ${release.originalReleaseDate || 'N/A'}
+Previous ISRC: ${release.previousISRC || 'N/A'}
+Previous UPC: ${release.previousUPC || 'N/A'}
+Previous release details: ${release.previousReleaseDetails || 'N/A'}
+Artwork URL: ${baseUrl}${release.artworkUrl}
+Artwork filename: ${release.artworkFilename}
+C-Line: ${release.cLine || 'N/A'}
+P-Line: ${release.pLine || 'N/A'}
+All submitted metadata (JSON):
+${JSON.stringify(release, null, 2)}
 
 ADMIN PORTAL:
 ${baseUrl}?view=admin
@@ -224,8 +270,22 @@ export async function sendAdminVevoApplicationEmail(application: { artistName: s
   await sendAdminEmails(`[VEVO APPLICATION] ${application.artistName}`, body);
 }
 
-export async function sendAdminVideoSubmissionEmail(video: { videoTitle: string; artistName: string; videoType: string; clientName: string; email: string; director?: string; language?: string; releaseDate?: string; notes?: string; createdAt: string }): Promise<void> {
-  const body = `A client submitted a music video for distribution through SlacWave MG.\n\nVideo: ${video.videoTitle}\nArtist: ${video.artistName}\nType: ${video.videoType}\nClient: ${video.clientName}\nClient email: ${video.email}\nDirector: ${video.director || 'Not supplied'}\nLanguage: ${video.language || 'Not supplied'}\nRelease date: ${video.releaseDate || 'Not supplied'}\nSubmitted: ${video.createdAt}\n\nClient notes:\n${video.notes || 'None supplied'}\n\nReview the submitted artwork and metadata in the Admin Dashboard. The artist will send the video master separately to WhatsApp 078 629 5032.`;
+export async function sendAdminVideoSubmissionEmail(video: Record<string, any>): Promise<void> {
+  const orderedFields: Array<[string, any]> = [
+    ['Video title', video.videoTitle], ['Primary artists', (video.primaryArtists || [video.artistName]).join(', ')],
+    ['Featured artists', (video.featuredArtists || []).join(', ')], ['Video type', video.videoType],
+    ['Client name', video.clientName], ['Client email', video.email], ['Label', video.labelName],
+    ['Genre', video.genre], ['Subgenre', video.subGenre], ['Song language', video.songLanguage || video.language],
+    ['Lyrics language', video.lyricsLanguage], ['Version', video.version], ['Release date', video.releaseDate],
+    ['Director / production company', video.director], ['Publisher', video.publisher], ['Composer', video.composer],
+    ['Lyricist', video.lyricist], ['Explicit content', video.explicit ? 'Yes' : 'No'],
+    ['Requested DSPs (selected order)', (video.dspSelections || []).join(', ')],
+    ['Description', video.description], ['YouTube description', video.youtubeDescription], ['Lyrics', video.lyrics],
+    ['Contributors', video.contributors], ['Additional notes', video.notes],
+    ['Artwork filename', video.artworkFilename], ['Artwork URL', video.artworkUrl],
+    ['Submitted', video.createdAt], ['Video master', 'Client sends separately via WhatsApp to 078 629 5032'],
+  ];
+  const body = `A client submitted a music video for distribution through SlacWave MG.\n\n${orderedFields.map(([label, value]) => `${label}: ${value ?? 'Not supplied'}`).join('\n\n')}\n\nComplete submitted metadata (JSON):\n${JSON.stringify(video, null, 2)}\n\nReview the submission in the Admin Dashboard.`;
   await sendAdminEmails(`[VIDEO DISTRIBUTION SUBMISSION] ${video.videoTitle} — ${video.artistName}`, body);
 }
 

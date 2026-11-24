@@ -1323,6 +1323,7 @@ class Database {
   getVideoSubmissionsForUser(userId: string): VideoSubmission[] { return this.getVideoSubmissions().filter(v => v.userId === userId); }
   createVideoSubmission(item: VideoSubmission): VideoSubmission { return this.mutate(data => { if (!Array.isArray(data.videoSubmissions)) data.videoSubmissions = []; data.videoSubmissions.unshift(item); return item; }); }
   updateVideoSubmission(id: string, updates: Partial<VideoSubmission>): VideoSubmission | undefined { return this.mutate(data => { const item = (data.videoSubmissions || []).find(v => v.id === id); if (!item) return undefined; Object.assign(item, updates); return item; }); }
+  deleteVideoSubmission(id: string): boolean { return this.mutate(data => { const before = (data.videoSubmissions || []).length; data.videoSubmissions = (data.videoSubmissions || []).filter(v => v.id !== id); return (data.videoSubmissions || []).length !== before; }); }
 
   // Explicit safety block: destructive reset must NEVER be callable
   resetToClean() {

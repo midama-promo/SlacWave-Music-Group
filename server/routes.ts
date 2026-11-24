@@ -1116,6 +1116,15 @@ apiRouter.get('/releases/:id', authMiddleware, (req: AuthenticatedRequest, res: 
   res.json({ release });
 });
 
+// Admin-only permanent deletion of an audio release submission.
+apiRouter.delete('/releases/:id', authMiddleware, adminOnly, (req: AuthenticatedRequest, res: Response) => {
+  const existing = db.findReleaseById(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Release not found.' });
+  const deleted = db.deleteRelease(existing.id);
+  if (!deleted) return res.status(500).json({ error: 'Release could not be deleted.' });
+  res.json({ success: true, message: `Release ${existing.refNumber} was deleted.` });
+});
+
 // ----------------------------------------------------
 // CLIENT ARTIST LIBRARY — private to the authenticated client
 // ----------------------------------------------------
@@ -1162,15 +1171,14 @@ apiRouter.get('/artists', authMiddleware, activeClientOnly, (req: AuthenticatedR
     legacyArtists.push(...(video.primaryArtists || [video.artistName]).filter(Boolean).map(name => ({ name, role: 'primary' as const })));
     legacyArtists.push(...(video.featuredArtists || []).map(name => ({ name, role: 'featured' as const })));
   }
+  // Merge historical release profile links into the saved library as well as
+  // importing missing artist names. Existing URLs are preserved when legacy
+  // records contain only a name, and filled in when an older release has links.
   const currentLibrary = Array.isArray(user.artistLibrary) ? user.artistLibrary : [];
-  const knownNames = new Set(currentLibrary.map(item => String(item.name || '').normalize('NFKC').toLocaleLowerCase('en-US')));
-  const missingLegacyArtists = legacyArtists.filter(item => {
-    const normalized = item.name.normalize('NFKC').toLocaleLowerCase('en-US');
-    if (knownNames.has(normalized)) return false;
-    knownNames.add(normalized);
-    return true;
-  });
-  return res.json({ artists: missingLegacyArtists.length ? upsertClientArtistLibrary(user.id, missingLegacyArtists) : currentLibrary });
+  const mergedLibrary = legacyArtists.length
+    ? upsertClientArtistLibrary(user.id, legacyArtists)
+    : currentLibrary;
+  return res.json({ artists: mergedLibrary });
 });
 
 const SLACWAVE_CONTRACT_VERSION = '2026-11-v1';
@@ -1415,12 +1423,18 @@ apiRouter.post('/video-submissions', authMiddleware, activeClientOnly, (req: Aut
   db.createVideoSubmission(item);
   upsertClientArtistLibrary(user.id, artistCreditsFromNames(videoPrimaryArtists, videoFeaturedArtists));
   void Promise.all([
-    sendAdminVideoSubmissionEmail({ videoTitle: item.videoTitle, artistName: item.artistName, videoType: item.videoType, clientName: user.name, email: user.email, director: item.director, language: item.language, releaseDate: item.releaseDate, notes: `${item.description || ''}\nYouTube description: ${item.youtubeDescription || ''}\nLyrics: ${item.lyrics || ''}\n${item.notes || ''}\nCover artwork: ${item.artworkUrl}\nVideo master to be sent by client via WhatsApp to 078 629 5032.`, createdAt: now }),
+    sendAdminVideoSubmissionEmail({ ...item, clientName: user.name, email: user.email, createdAt: now }),
     sendNotification({ recipientEmail: 'mogaursa4@gmail.com, remoabetswemolefi@gmail.com', recipientName: 'SlacWave MG Administration', subject: `New Video Distribution Submission — ${item.videoTitle}`, template: 'submission_received', metadata: { submissionId: item.id, artistName: item.artistName, clientName: user.name, clientEmail: user.email, videoTitle: item.videoTitle, status: item.status } }),
   ]).catch(err => console.error('[VIDEO] Admin notification failed:', err));
   return res.status(201).json({ message: 'Your video has been submitted for review.', submission: item });
 });
 apiRouter.get('/video-submissions', authMiddleware, (req: AuthenticatedRequest, res: Response) => res.json({ submissions: req.user!.role === 'admin' ? db.getVideoSubmissions() : db.getVideoSubmissionsForUser(req.user!.id) }));
+apiRouter.delete('/admin/video-submissions/:id', authMiddleware, adminOnly, (req: AuthenticatedRequest, res: Response) => {
+  const existing = db.getVideoSubmissions().find(v => v.id === req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Video submission not found.' });
+  if (!db.deleteVideoSubmission(existing.id)) return res.status(500).json({ error: 'Video submission could not be deleted.' });
+  res.json({ success: true, message: 'Video submission deleted.' });
+});
 apiRouter.patch('/admin/video-submissions/:id', authMiddleware, adminOnly, (req: AuthenticatedRequest, res: Response) => {
   const existing = db.getVideoSubmissions().find(v => v.id === req.params.id); if (!existing) return res.status(404).json({ error: 'Video submission not found.' });
   const status = req.body?.status || existing.status; if (!['Pending Review','Approved','Corrections Required','Denied','Rejected','Delivered'].includes(status)) return res.status(400).json({ error: 'Choose a valid video submission status.' });

@@ -354,78 +354,48 @@ export const ReleaseDetailModal: React.FC<ReleaseDetailModalProps> = ({
                   )}
                 </p>
 
-                {/* Artist DSP Profile Links */}
-                {((release.primaryArtistProfiles && release.primaryArtistProfiles.some((p) => p.spotifyProfileUrl || p.appleMusicProfileUrl || p.spotifyProfileCreateRequested || p.appleMusicProfileCreateRequested)) ||
-                  (release.featuredArtistProfiles && release.featuredArtistProfiles.some((p) => p.spotifyProfileUrl || p.appleMusicProfileUrl || p.spotifyProfileCreateRequested || p.appleMusicProfileCreateRequested))) && (
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {release.primaryArtistProfiles?.map((p, idx) => (
-                      <div key={idx} className="flex items-center gap-1.5 text-[11px] bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded">
-                        <span className="font-semibold text-neutral-300">{p.name}:</span>
-                        {p.spotifyProfileUrl && (
-                          <a
-                            href={p.spotifyProfileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-emerald-400 hover:underline flex items-center gap-0.5"
-                          >
-                            <span>Spotify</span>
-                            <ExternalLink className="w-2.5 h-2.5" />
-                          </a>
-                        )}
-                        {p.spotifyProfileUrl && p.appleMusicProfileUrl && <span>·</span>}
-                        {p.appleMusicProfileUrl && (
-                          <a
-                            href={p.appleMusicProfileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-emerald-400 hover:underline flex items-center gap-0.5"
-                          >
-                            <span>Apple Music</span>
-                            <ExternalLink className="w-2.5 h-2.5" />
-                          </a>
-                        )}
-                        {(p.spotifyProfileCreateRequested || p.appleMusicProfileCreateRequested) && <span className="text-amber-300">New profiles requested</span>}
-                        {p.socialMediaLinks?.map((url, socialIndex) => <a key={socialIndex} href={url} target="_blank" rel="noopener noreferrer" className="text-neutral-400 hover:text-white">Social {socialIndex + 1}</a>)}
-                      </div>
-                    ))}
-                    {release.featuredArtistProfiles?.map((p, idx) => (
-                      <div key={`fa-${idx}`} className="flex items-center gap-1.5 text-[11px] bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded">
-                        <span className="text-neutral-400">feat. {p.name}:</span>
-                        {p.spotifyProfileUrl && (
-                          <a
-                            href={p.spotifyProfileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-emerald-400 hover:underline flex items-center gap-0.5"
-                          >
-                            <span>Spotify</span>
-                            <ExternalLink className="w-2.5 h-2.5" />
-                          </a>
-                        )}
-                        {p.spotifyProfileUrl && p.appleMusicProfileUrl && <span>·</span>}
-                        {p.appleMusicProfileUrl && (
-                          <a
-                            href={p.appleMusicProfileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-emerald-400 hover:underline flex items-center gap-0.5"
-                          >
-                            <span>Apple Music</span>
-                            <ExternalLink className="w-2.5 h-2.5" />
-                          </a>
-                        )}
-                        {(p.spotifyProfileCreateRequested || p.appleMusicProfileCreateRequested) && <span className="text-amber-300">New profiles requested</span>}
-                        {p.socialMediaLinks?.map((url, socialIndex) => <a key={socialIndex} href={url} target="_blank" rel="noopener noreferrer" className="text-neutral-400 hover:text-white">Social {socialIndex + 1}</a>)}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* Complete artist profile and social links — ordered and shown in full */}
+                {(() => {
+                  const profiles = [
+                    ...(release.primaryArtistProfiles || []).map(profile => ({ ...profile, displayRole: 'Primary artist' })),
+                    ...(release.featuredArtistProfiles || []).map(profile => ({ ...profile, displayRole: 'Featured artist' })),
+                  ];
+                  const platformName = (url: string, index: number) => {
+                    try {
+                      const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+                      const platforms: Array<[string, string]> = [['instagram.com','Instagram'],['spotify.com','Spotify'],['music.apple.com','Apple Music'],['tiktok.com','TikTok'],['facebook.com','Facebook'],['youtube.com','YouTube'],['youtu.be','YouTube'],['x.com','X'],['twitter.com','X'],['soundcloud.com','SoundCloud'],['audiomack.com','Audiomack']];
+                      return platforms.find(([domain]) => host === domain || host.endsWith(`.${domain}`))?.[1] || `Social link ${index + 1}`;
+                    } catch { return `Social link ${index + 1}`; }
+                  };
+                  return profiles.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">Artist links — full URLs in submission order</p>
+                      {profiles.map((profile, index) => {
+                        const links = [
+                          ...(profile.socialMediaLinks || []).map((url, linkIndex) => ({ label: platformName(url, linkIndex), url })),
+                          ...(profile.spotifyProfileUrl ? [{ label: 'Spotify', url: profile.spotifyProfileUrl }] : []),
+                          ...(profile.appleMusicProfileUrl ? [{ label: 'Apple Music', url: profile.appleMusicProfileUrl }] : []),
+                        ];
+                        return <div key={`${profile.name}-${index}`} className="rounded-lg border border-neutral-800 bg-neutral-950/60 p-3 text-[11px]">
+                          <p className="mb-1 font-semibold text-neutral-200">{profile.displayRole}: {profile.name}</p>
+                          {links.length ? links.map((link, linkIndex) => <div key={`${link.label}-${linkIndex}`} className="break-all leading-5">
+                            <span className="text-neutral-400">{link.label}: </span>
+                            <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-emerald-300 underline underline-offset-2">{link.url}</a>
+                          </div>) : <p className="text-neutral-500">No profile links supplied.</p>}
+                          {(profile.spotifyProfileCreateRequested || profile.appleMusicProfileCreateRequested) && <p className="mt-1 text-amber-300">New profile creation requested</p>}
+                        </div>;
+                      })}
+                    </div>
+                  ) : null;
+                })()}
+
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3.5 bg-neutral-900/60 border border-neutral-800/80 rounded-xl text-xs">
                 <div>
                   <span className="text-[10px] font-mono text-neutral-500 uppercase block">Client / Label</span>
                   <span className="font-semibold text-neutral-200 truncate block">{release.artistLabelName}</span>
+                  {release.labelName && <span className="text-[10px] text-neutral-300 block">Release label: {release.labelName}</span>}
                   <span className="text-[10px] text-neutral-500 font-mono truncate block">{release.userEmail}</span>
                 </div>
 
@@ -454,6 +424,16 @@ export const ReleaseDetailModal: React.FC<ReleaseDetailModalProps> = ({
                     <span className="text-neutral-300">{release.producers.join(', ')}</span>
                   </div>
                 )}
+                {release.publishers && release.publishers.length > 0 && (
+                  <div>
+                    <span className="text-[10px] font-mono text-neutral-500 uppercase block">Publisher(s)</span>
+                    <span className="text-neutral-300">{release.publishers.join(', ')}</span>
+                  </div>
+                )}
+                {release.lyricsLanguage && <div><span className="text-[10px] font-mono text-neutral-500 uppercase block">Lyrics language</span><span className="text-neutral-300">{release.lyricsLanguage}</span></div>}
+                {release.version && <div><span className="text-[10px] font-mono text-neutral-500 uppercase block">Version</span><span className="text-neutral-300">{release.version}</span></div>}
+                {release.previewStart !== undefined && <div><span className="text-[10px] font-mono text-neutral-500 uppercase block">Preview start</span><span className="text-neutral-300">{Math.floor(release.previewStart / 60)}:{String(release.previewStart % 60).padStart(2,'0')}</span></div>}
+                {release.dspSelections && <div className="col-span-2 sm:col-span-3"><span className="text-[10px] font-mono text-neutral-500 uppercase block">Requested DSPs (selected order)</span><span className="text-neutral-300">{release.dspSelections.length ? release.dspSelections.join(' · ') : 'None selected'}</span></div>}
 
                 {release.previouslyReleased && (
                   <div className="col-span-2 sm:col-span-3 rounded-lg border border-neutral-800 bg-neutral-950/50 p-3">
@@ -463,6 +443,7 @@ export const ReleaseDetailModal: React.FC<ReleaseDetailModalProps> = ({
                       <span>ISRC: {release.previousISRC || 'Not supplied'}</span>
                       <span>UPC: {release.previousUPC || 'Not supplied'}</span>
                     </div>
+                    {release.previousReleaseDetails && <p className="mt-2 text-xs text-neutral-400">Previous release details: {release.previousReleaseDetails}</p>}
                   </div>
                 )}
 
@@ -503,6 +484,12 @@ export const ReleaseDetailModal: React.FC<ReleaseDetailModalProps> = ({
                 <div className="p-3 bg-neutral-900/40 border border-neutral-800/60 rounded-xl text-xs text-neutral-400 space-y-1">
                   <span className="font-semibold text-neutral-300">Client Notes:</span>
                   <p className="italic">"{release.clientNotes}"</p>
+                </div>
+              )}
+              {release.lyrics && (
+                <div className="p-3 bg-neutral-900/40 border border-neutral-800/60 rounded-xl text-xs text-neutral-300 space-y-1">
+                  <span className="font-semibold text-neutral-200">Submitted Lyrics:</span>
+                  <p className="whitespace-pre-wrap leading-relaxed">{release.lyrics}</p>
                 </div>
               )}
             </div>

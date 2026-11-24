@@ -340,39 +340,6 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
           <div className="mt-3 flex flex-wrap gap-2"><a href={`mailto:mogaursa4@gmail.com,remoabetswemolefi@gmail.com?subject=${encodeURIComponent('Free YouTube Official Artist Channel Request')}&body=${encodeURIComponent(`Artist: ${user?.artistName || user?.name || ''}\nAccount email: ${user?.email || ''}\nTopic channel links:\n${topicChannelLinks.filter(x=>x.trim()).join('\n')}\nOriginal YouTube channel: ${originalYoutubeChannel}\n\nPlease review my eligibility for a YouTube Official Artist Channel request.`)}`} onClick={e=>{if(!originalYoutubeChannel.trim()||!/^https?:\/\//i.test(originalYoutubeChannel)){e.preventDefault();alert('Enter one valid original YouTube channel URL first.');}else if(topicChannelLinks.filter(x=>x.trim()).length<1||topicChannelLinks.filter(x=>x.trim()).length>5||topicChannelLinks.some(x=>x.trim()&&!/^https?:\/\//i.test(x.trim()))){e.preventDefault();alert('Enter at least one valid Topic channel URL, with a maximum of 5.');}}} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white">Request free YouTube OAC</a><a href={`mailto:mogaursa4@gmail.com,remoabetswemolefi@gmail.com?subject=${encodeURIComponent('YouTube Content ID Eligibility Review')}&body=${encodeURIComponent(`Artist: ${user?.artistName || user?.name || ''}\nAccount email: ${user?.email || ''}\n\nPlease review my recording(s) for YouTube Content ID eligibility.`)}`} className="rounded-xl border border-emerald-700 px-4 py-2.5 text-xs font-bold text-emerald-300">Request Content ID review</a></div>
         </section>
 
-        {/* Spotify for Artists claim checklist */}
-        {!isAccountRestricted && (
-          <section aria-labelledby="spotify-claim-heading" className="rounded-2xl border border-emerald-900/60 bg-neutral-900/70 p-5 sm:p-6 shadow-lg">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
-              <div className="flex items-start gap-3">
-                <div className="w-11 h-11 rounded-xl bg-emerald-950/70 border border-emerald-800/70 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                </div>
-                <div className="min-w-0">
-                  <h2 id="spotify-claim-heading" className="text-base sm:text-lg font-bold text-white">Claim your Spotify for Artists profile</h2>
-                  <p className="text-sm text-neutral-300 mt-1 max-w-2xl">
-                    Claim your artist profile so you can manage your image, view Spotify for Artists analytics and access artist tools. Sign in with your own Spotify account; never share your password with anyone.
-                  </p>
-                  <a href="https://artists.spotify.com/claim" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-emerald-400 hover:text-emerald-300 underline underline-offset-4">
-                    Open Spotify for Artists claim page <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                  <p className="text-xs text-neutral-400 mt-3">Have you claimed your artist profile yet?</p>
-                </div>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-                <button type="button" disabled={spotifyClaimSaving} onClick={() => saveSpotifyClaimStatus(true)} className={`px-4 py-2.5 rounded-xl border text-sm font-bold disabled:opacity-50 ${spotifyClaimed === true ? 'bg-emerald-900/60 border-emerald-600 text-emerald-100' : 'bg-neutral-800 border-neutral-600 text-neutral-100 hover:bg-neutral-700'}`}>
-                  {spotifyClaimSaving && spotifyClaimed !== true ? 'Saving…' : 'Yes, claimed it'}
-                </button>
-                <button type="button" disabled={spotifyClaimSaving} onClick={() => saveSpotifyClaimStatus(false)} className={`px-4 py-2.5 rounded-xl border text-sm font-bold disabled:opacity-50 ${spotifyClaimed === false ? 'bg-amber-900/50 border-amber-600 text-amber-100' : 'bg-neutral-800 border-neutral-600 text-neutral-100 hover:bg-neutral-700'}`}>
-                  {spotifyClaimSaving && spotifyClaimed !== false ? 'Saving…' : 'Not yet'}
-                </button>
-              </div>
-            </div>
-            {spotifyClaimMessage && <p role="status" className="text-xs text-neutral-300 mt-4">{spotifyClaimMessage}</p>}
-            {spotifyClaimed === true && !spotifyClaimMessage && <p className="text-xs text-emerald-400 mt-4">Your confirmation is saved: profile claimed.</p>}
-            {spotifyClaimed === false && !spotifyClaimMessage && <p className="text-xs text-amber-300 mt-4">Your confirmation is saved: profile not claimed yet.</p>}
-          </section>
-        )}
 
         {/* Customer Submission Status Metrics */}
         {releases.length > 0 && (
